@@ -1,0 +1,6 @@
+"""Runs the momilp solver"""
+
+from src.momilp.executor import MomilpSolverApp
+
+if __name__ == "__main__":
+    MomilpSolverApp().run()

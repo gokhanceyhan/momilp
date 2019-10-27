@@ -9,3 +9,4 @@
 *.sol
 momilp_venv/
 .idea/
+.vscode/
