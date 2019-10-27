@@ -1,0 +1,11 @@
+.DS_Store
+*.txt
+*.csv
+*.log
+*.pyc
+*.lp
+*.mps
+*.prm
+*.sol
+momilp_venv/
+.idea/
