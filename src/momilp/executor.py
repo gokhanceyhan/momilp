@@ -2,6 +2,7 @@
 
 import argparse
 from enum import Enum
+import gurobipy
 
 class SolverPackage(Enum):
 
@@ -9,12 +10,13 @@ class SolverPackage(Enum):
 
     CPLEX = "cplex"
     GUROBI = "gurobi"
+ 
 
 class Executor:
 
     """Implements the momilp solver executor"""
 
-    _MODEL_CLASS_TO_SOLVER_PACKAGE = {grb.Model: SolverPackage.GUROBI}
+    _MODEL_CLASS_TO_SOLVER_PACKAGE = {gurobipy.Model: SolverPackage.GUROBI}
     _SUPPORTED_SOLVER_PACKAGES = [SolverPackage.GUROBI]
     _UNSUPPORTED_SOLVER_PACKAGE_ERROR_MESSAGE = \
         "the solver package is not supported, define the model in one of the '{supported_solvers!s}' solver packages"
@@ -26,7 +28,6 @@ class Executor:
             error_message = Executor._UNSUPPORTED_SOLVER_PACKAGE_ERROR_MESSAGE.format(
                 solver=solver_package, supported_solvers=Executor._SUPPORTED_SOLVER_PACKAGES)
             raise ValueError(error_message)
-
 
     def execute(self):
         """Executes the momilp solver"""
@@ -49,6 +50,3 @@ class MomilpSolverApp:
     def run(self):
         """Runs the command line application"""
         args = self._parse_args()
-        print(args.solver_package)
-        print(args.model_file_path)
-        print(args.working_dir)
