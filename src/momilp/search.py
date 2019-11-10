@@ -1,6 +1,7 @@
 """Implements the search space elements and models"""
 
 from enum import Enum
+from gurobipy import Var
 
 class SearchProblem:
 
@@ -66,20 +67,31 @@ class SliceProblem:
 
     """Implement slice problem"""
 
-    _DEFAULT_DIMEMSION = 3
-
-    def __init__(self, model, dimension=None):
-        self._dimension = dimension or SliceProblem._DEFAULT_DIMEMSION
+    def __init__(self, model):
         self._model = model
 
-    def _update_model(self, y_bar, region=None)
+    def _update_model(self, y_bar, region=None):
         """Updates the model"""
-        pass
+        self._model.fix_integer_vector(y_bar)
+        if not region:
+            return
+        
 
-    def _validate(self, y_bar, region=None):
+    def _validate(self, y_bar):
         """Validates the slice problem"""
-        pass
+        assert all([isinstance(y_bar_, int) for y_bar_ in y_bar])
+        y = self._model.int_vars()
+        assert all([isinstance(y_, Var) for y_ in y])
+        assert len(y_bar) == len(y)
+        assert all([y_.getAttr("LB") <= y_bar_ <= y_.getAttr("UB") for y_, y_bar_ in zip(y, y_bar)])
 
     def solve(self, y_bar, region=None):
         """Solves the slice problem for the given integer vector and return the nondominated frontier"""
-        pass
+        try:
+            self._validate(y_bar)
+        except AssertionError as error:
+            message = "Failed to validate the slice problem for y='%s' and y_bar='%s'" % (
+                self._model.int_vars(), str(y_bar))
+            raise RuntimeError(message) from error
+        self._update_model(y_bar, region)
+        self._model.solve()
