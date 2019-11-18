@@ -2,6 +2,9 @@
 
 from enum import Enum
 from gurobipy import Var
+from src.momilp.elements import SearchRegionInTwoDimension
+from src.momilp.utility import ConstraintGenerator
+
 
 class SearchProblem:
 
@@ -67,15 +70,44 @@ class SliceProblem:
 
     """Implement slice problem"""
 
+    _SUPPORTED_SEARCH_REGION_NUM_DIMENSIONS = [2]
+    _UNSUPPORTED_SEARCH_REGION_DIMENSION_ERROR = \
+        "the search region dimension of '%s' is not supported in the slice problem, the supported dimensions are '%s'"
+
     def __init__(self, model):
         self._model = model
+
+    def _add_region_defining_constraints_in_two_dimension(self, region):
+        """Adds the linear constraints to the model to restrict the feasible criterion space in 'x_obj_name' and 
+        'y_obj_name' criteria to the specified region"""
+        if not isinstance(region, SearchRegionInTwoDimension):
+            message = SliceProblem._UNSUPPORTED_SEARCH_REGION_DIMENSION_ERROR % (
+                region.dim(), SliceProblem._SUPPORTED_SEARCH_REGION_NUM_DIMENSIONS)
+            raise ValueError(message)
+        model = self._model
+        x_var = model.Z()[region.x_obj_name()]
+        y_var = model.Z()[region.y_obj_name()]
+        ConstraintGenerator.create_constraints_for_cone_in_positive_quadrant(
+            model, region.cone(), x_var, y_var, name=region.id())
+        ConstraintGenerator.create_constraint_for_edge_in_two_dimension(
+            model, region.edge(), x_var, y_var, name=region.id())
+        ConstraintGenerator.create_constraints_for_lower_bound_in_two_dimension(
+            model, region.lower_bound(), x_var, y_var, name=region.id())
+
+    def _remove_region_defining_constraints(self):
+        """Removes all the region defining constraints from the model"""
+        model = self._model
+        region_defining_constraint_names = model.region_defining_constraint_names()
+        model.remove_constraint(region_defining_constraint_names)
 
     def _update_model(self, y_bar, region=None):
         """Updates the model"""
         self._model.fix_integer_vector(y_bar)
         if not region:
             return
-        
+        self._remove_region_defining_constraints()
+        if isinstance(region, SearchRegionInTwoDimension):
+            self._add_region_defining_constraints_in_two_dimension(region)
 
     def _validate(self, y_bar):
         """Validates the slice problem"""

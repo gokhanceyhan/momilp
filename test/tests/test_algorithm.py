@@ -1,4 +1,4 @@
-"""Implements tests for momilp solver"""
+"""Implements tests for momilp solver algorithm"""
 
 from hamcrest import assert_that, is_
 import gurobipy
@@ -14,13 +14,14 @@ class ConeBasedSearchAlgorithmTest(TestCase):
 
     def setUp(self):
         self._test_data_dir = os.path.join(os.environ["PYTHON_TEST_PATH"], "data") 
+        self.assert_that = assert_that
 
     def test_three_obj_binary_linear_programming_problem(self):
         """Tests the algorithm on a three-objective binary linear program"""
         file_name = os.path.join(self._test_data_dir, "three_obj_blp.lp")
-        model = GurobiMomilpModel(file_name)
+        model = GurobiMomilpModel(file_name=file_name)
         model.solve()
-        assert_that(model.num_obj(), is_(3))
+        self.assert_that(model.num_obj(), is_(3))
         executor = Executor(model)
         executor.execute()
         y = model.int_vars()

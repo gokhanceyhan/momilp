@@ -1,6 +1,9 @@
 """Implements the elements of a momilp problem"""
 
+import abc
+from enum import Enum
 import math
+
 
 class ConvexConeInPositiveQuadrant:
 
@@ -15,9 +18,9 @@ class ConvexConeInPositiveQuadrant:
         extreme_rays = self._extreme_rays
         if len(extreme_rays) != 2:
             raise ValueError("there must be exactly two extreme rays")
-        if extreme_rays[0].origin() != [0, 0] or extreme_rays[1].origin() != [0, 0]:
+        if extreme_rays[0].origin().values() != [0, 0] or extreme_rays[1].origin().values() != [0, 0]:
             raise ValueError("the origin must be (0, 0)")
-        if not 0 <= extreme_rays[0].angle_in_degrees() <= 90 or not 0 <= extreme_rays[1]._angle_in_degrees() <= 90:
+        if not 0 <= extreme_rays[0].angle_in_degrees() <= 90 or not 0 <= extreme_rays[1].angle_in_degrees() <= 90:
             raise ValueError("the cone must be in the positive quadrant")
 
     def left_extreme_ray(self):
@@ -58,8 +61,7 @@ class EdgeInTwoDimension(Edge):
 
     def __init__(self, left_point, right_point, left_inclusive=True, right_inclusive=True, z3=0):
         super(EdgeInTwoDimension, self).__init__(
-            self, left_point, right_point, end_inclusive=right_inclusive, 
-            start_inclusive=left_inclusive)
+            left_point, right_point, end_inclusive=right_inclusive, start_inclusive=left_inclusive)
         self._left_inclusive = left_inclusive
         self._left_point = left_point
         self._right_inclusive = right_inclusive
@@ -95,6 +97,31 @@ class EdgeInTwoDimension(Edge):
     def z3(self):
         """Returns the third criterion value"""
         return self._z3
+
+
+class Solution:
+
+    """Implements partial solution to the problem"""
+
+    def __init__(self, y_bar):
+        self._y_bar = y_bar
+
+    def y_bar(self):
+        """Returns the y-vector corresponding to the solution"""
+        return self._y_bar
+
+    
+class EdgeSolution(Solution):
+
+    """Implements a solution to the problem with a corresponding edge in the objective space"""
+
+    def __init__(self, edge, y_bar):
+        super(EdgeSolution, self).__init__(y_bar)
+        self._edge = edge
+
+    def edge(self):
+        """Returns the edge"""
+        return self._edge
 
 
 class FrontierInTwoDimension:
@@ -152,6 +179,10 @@ class LowerBound:
     def __init__(self, bounds):
         self._bounds = bounds
 
+    def bounds(self):
+        """Returns the bounds"""
+        return self._bounds
+
     def dimension(self):
         """Returns the dimension of the lower bound"""
         return len(self._bounds)
@@ -162,12 +193,20 @@ class LowerBoundInTwoDimension(LowerBound):
     """Implements lower bound in two-dimensional space"""
 
     def __init__(self, bounds):
-        super(LowerBoundInTwoDimension, self).__init__(self, bounds)
+        super(LowerBoundInTwoDimension, self).__init__(bounds)
 
     def _validate(self):
         """Validates the lower bound in two-dimensional space"""
         if len(self._bounds) > 2:
             raise ValueError("the number of bounds must be at most 2")
+
+    def z1(self):
+        """Returns the lower bound on the first criterion value"""
+        return self._bounds[0]
+
+    def z2(self):
+        """Returns the lower bound on the second criterion value"""
+        return self._bounds[1] if len(self._bounds) > 1 else None
 
 
 class Point:
@@ -186,30 +225,12 @@ class Point:
         return self._values
 
 
-class PointInThreeDimension(PointInTwoDimension):
-
-    """Implements point in three-dimensional space"""
-
-    def __init__(self, values):
-        super(PointInThreeDimension, self).__init__(self, values)
-        self._validate()
-
-    def _validate(self):
-        """Validates the point in three-dimensional space"""
-        if len(self._values) != 3:
-            raise ValueError("the number of values must be 3")
-
-    def z3(self):
-        """Returns the third criterion value"""
-        return self._values[2]
-
-
 class PointInTwoDimension(Point):
 
     """Implements point in two-dimensional space"""
 
     def __init__(self, values):
-        super(PointInTwoDimension, self).__init__(self, values)
+        super(PointInTwoDimension, self).__init__(values)
         self._validate()
 
     def _validate(self):
@@ -226,11 +247,42 @@ class PointInTwoDimension(Point):
         return self._values[1]
 
 
+class PointInThreeDimension(PointInTwoDimension):
+
+    """Implements point in three-dimensional space"""
+
+    def __init__(self, values):
+        super(PointInThreeDimension, self).__init__(values)
+        self._validate()
+
+    def _validate(self):
+        """Validates the point in three-dimensional space"""
+        if len(self._values) != 3:
+            raise ValueError("the number of values must be 3")
+
+    def z3(self):
+        """Returns the third criterion value"""
+        return self._values[2]
+
+
+class PointSolution(Solution):
+
+    """Implements a solution to the problem with a corresponding point in the objective space"""
+
+    def __init__(self, point, y_bar):
+        super(PointSolution, self).__init__(y_bar)
+        self._point = point
+
+    def point(self):
+        """Returns the point"""
+        return self._point
+
+
 class RayInTwoDimension:
 
     """Implements ray in two-dimensional space"""
 
-    def __init__(self, origin, angle_in_degrees):
+    def __init__(self, angle_in_degrees, origin):
         self._angle_in_degrees = angle_in_degrees
         self._origin = origin
         self._validate()
@@ -239,7 +291,7 @@ class RayInTwoDimension:
         """Validates the ray in two-dimensional space"""
         if isinstance(self._origin, PointInTwoDimension):
             return
-        raise ValueError("the origin must be in two dimension")
+        raise ValueError("the origin must be a point in two dimension")
 
     def angle_in_degrees(self):
         """Returns the angle of the ray with (1,0)-axis in degrees"""
@@ -250,14 +302,27 @@ class RayInTwoDimension:
         return self._origin
 
 
-class SearchRegionInTwoDimension:
+class SearchRegion(metaclass=abc.ABCMeta):
+
+    """Implements search region"""
+
+    @abc.abstractmethod
+    def dim(self):
+        """Returns the dimension of the search region"""
+
+
+class SearchRegionInTwoDimension(SearchRegion):
 
     """Implements search region in two-dimensional space"""
 
-    def __init__(self, cone, edge=None, lower_bound=None):
+    def __init__(self, cone, edge=None, lower_bound=None, id_=None, x_obj_name=None, y_obj_name=None):
         self._cone = cone
+        self._dim = 2
         self._edge = edge
         self._lower_bound = lower_bound
+        self._id = id_ or str(id(self))
+        self._x_obj_name = x_obj_name
+        self._y_obj_name = y_obj_name
         self._validate()
 
     def _validate(self):
@@ -270,32 +335,76 @@ class SearchRegionInTwoDimension:
             return
         if not isinstance(edge, EdgeInTwoDimension):
             raise ValueError("the edge must be in two-dimensional space")
-        tan_of_left_extreme_ray = math.tan(math.radians(self._cone.left_extreme_ray().angle_in_degrees()))
-        tan_of_left_extreme_point = edge.left_point()[1] / edge.left_point()[0]
+        left_extreme_ray = self._cone.left_extreme_ray()
+        tan_of_left_extreme_ray = math.tan(math.radians(left_extreme_ray.angle_in_degrees()))
+        tan_of_left_extreme_point = edge.left_point().z2() / edge.left_point().z1()
         if not math.isclose(tan_of_left_extreme_ray, tan_of_left_extreme_point, rel_tol=0.001):
-            raise ValueError("the left point of the edge is not on the left extreme ray of the cone")
-        tan_of_right_extreme_ray = math.tan(math.radians(self._cone.right_extreme_ray().angle_in_degrees()))
-        tan_of_right_extreme_point = edge.right_point()[1] / edge.right_point()[0]
+            raise ValueError(
+                "the left point of the edge '%s' is not on the left extreme ray of the cone with origin '%s' and " \
+                "angle in degrees '%s'" % (
+                    edge.left_point().values(), left_extreme_ray.origin().values(), 
+                    left_extreme_ray.angle_in_degrees()))
+        right_extreme_ray = self._cone.right_extreme_ray()
+        tan_of_right_extreme_ray = math.tan(math.radians(right_extreme_ray.angle_in_degrees()))
+        tan_of_right_extreme_point = edge.right_point().z2() / edge.right_point().z1()
         if not math.isclose(tan_of_right_extreme_ray, tan_of_right_extreme_point, rel_tol=0.001):
-            raise ValueError("the right point of the edge is not on the right extreme ray of the cone")
+            raise ValueError(
+                "the right point of the edge '%s' is not on the right extreme ray of the cone with origin '%s' and " \
+                "angle in degrees '%s'" % (
+                    edge.right_point().values(), right_extreme_ray.origin().values(), 
+                    right_extreme_ray.angle_in_degrees()))
 
+    def cone(self):
+        """Returns the cone"""
+        return self._cone
+
+    def dim(self):
+        return self._dim
+
+    def edge(self):
+        """Returns the edge"""
+        return self._edge
+
+    def id(self):
+        """Returns the region id"""
+        return self._id
+
+    def lower_bound(self):
+        """Returns the lower bound"""
+        return self._lower_bound
+    
     def partition(self, frontier):
         """Partitions the search region to eliminate the space dominated by the frontier"""
+
+    def x_obj_name(self):
+        """Returns the obj name for the x-axis of the region"""
+        return self._x_obj_name
+
+    def y_obj_name(self):
+        """Returns the obj name for the y-axis of the region"""
+        return self._y_obj_name
 
 
 class SolutionSet:
 
     """Implements solution set for the algorithm"""
 
-    def __init__(self, edges=None, points=None):
-        self._edges = edges or set()
-        self._points = points or set()
+    def __init__(self, edge_solutions=None, point_solutions=None):
+        self._edge_solutions = edge_solutions or set()
+        self._point_solutions = point_solutions or set()
 
-    def add_edge(self, edge):
-        """Adds the edge to the solution set"""
-        self._edges.add(edge)
+    def add_edge_solution(self, edge_solution):
+        """Adds the edge solution to the solution set"""
+        self._edge_solutions.add(edge_solution)
 
-    def add_point(self, point):
-        """Adds the point to the solution set"""
-        self._points.add(point)
-    
+    def add_point_solution(self, point_solution):
+        """Adds the point solution to the solution set"""
+        self._point_solutions.add(point_solution)
+
+
+class SolverStage(Enum):
+
+    """Represents the solver stage"""
+
+    MODEL_SCALING = "model scaling"
+    SEARCH = "search"

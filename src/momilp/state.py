@@ -1,5 +1,6 @@
 """Implements state of the algorithm and its elements"""
 
+
 class Iteration:
 
     """Implements iteration state of the algorithm"""

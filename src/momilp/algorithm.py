@@ -3,6 +3,7 @@
 import abc
 from enum import Enum
 
+
 class AbstractAlgorithm(metaclass=abc.ABCMeta):
 
     """Implements abstract class for the algorithm"""
@@ -10,6 +11,7 @@ class AbstractAlgorithm(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def run(self):
         """Runs the algorithm"""
+
 
 class AlgorithmType(Enum):
 
@@ -28,6 +30,9 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
 
     def _initialize(self):
         """Initializes the algorithm"""
+
+    def run(self):
+        pass
 
 
 class Factory:

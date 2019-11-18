@@ -5,9 +5,10 @@ from enum import Enum
 from src.momilp.model import GurobiMomilpModel
 import gurobipy
 
+
 class SolverPackage(Enum):
 
-    """Implements solver package"""
+    """Represents solver package"""
 
     CPLEX = "cplex"
     GUROBI = "gurobi"
