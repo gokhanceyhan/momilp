@@ -18,16 +18,6 @@ class ConeBasedSearchAlgorithmTest(TestCase):
 
     def test_three_obj_binary_linear_programming_problem(self):
         """Tests the algorithm on a three-objective binary linear program"""
-        file_name = os.path.join(self._test_data_dir, "three_obj_blp.lp")
-        model = GurobiMomilpModel(file_name=file_name)
-        model.solve()
-        self.assert_that(model.num_obj(), is_(3))
-        executor = Executor(model)
-        executor.execute()
-        y = model.int_vars()
-        y_bar = [1] * len(y)
-        sp = SliceProblem(model)
-        sp.solve(y_bar)
 
     def test_three_obj_linear_programming_problem(self):
         """Tests the algorithm on a three-objective linear program"""

@@ -3,7 +3,7 @@
 from enum import Enum
 from gurobipy import Var
 from src.momilp.elements import SearchRegionInTwoDimension
-from src.momilp.utility import ConstraintGenerator
+from src.momilp.utility import ConstraintGenerationUtilities
 
 
 class SearchProblem:
@@ -87,11 +87,11 @@ class SliceProblem:
         model = self._model
         x_var = model.Z()[region.x_obj_name()]
         y_var = model.Z()[region.y_obj_name()]
-        ConstraintGenerator.create_constraints_for_cone_in_positive_quadrant(
+        ConstraintGenerationUtilities.create_constraints_for_cone_in_positive_quadrant(
             model, region.cone(), x_var, y_var, name=region.id())
-        ConstraintGenerator.create_constraint_for_edge_in_two_dimension(
+        ConstraintGenerationUtilities.create_constraint_for_edge_in_two_dimension(
             model, region.edge(), x_var, y_var, name=region.id())
-        ConstraintGenerator.create_constraints_for_lower_bound_in_two_dimension(
+        ConstraintGenerationUtilities.create_constraints_for_lower_bound_in_two_dimension(
             model, region.lower_bound(), x_var, y_var, name=region.id())
 
     def _remove_region_defining_constraints(self):

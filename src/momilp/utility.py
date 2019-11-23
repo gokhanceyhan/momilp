@@ -6,7 +6,7 @@ from src.momilp.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension
     Point, PointSolution
 
 
-class ConstraintGenerator:
+class ConstraintGenerationUtilities:
 
     """Implements constraint generator utility"""
 
@@ -27,14 +27,14 @@ class ConstraintGenerator:
         y_coeff = 1 if left_extreme_ray.angle_in_degrees() < 90 else 0.0
         lhs = x_coeff * x_var - y_coeff * y_var
         rhs = 0.0
-        name_ = "_".join([name, ConstraintGenerator._LEFT_EXTREME_RAY_CONSTRAINT_NAME_SUFFIX])
+        name_ = "_".join([name, ConstraintGenerationUtilities._LEFT_EXTREME_RAY_CONSTRAINT_NAME_SUFFIX])
         constraints.append(model.add_constraint(lhs, name_, rhs, GRB.GREATER_EQUAL, region_constraint=True))
         right_extreme_ray = cone.right_extreme_ray()
         x_coeff = math.tan(math.radians(right_extreme_ray.angle_in_degrees()))
         y_coeff = 1.0
         lhs = x_coeff * x_var - y_coeff * y_var
         rhs = 0.0
-        name_ = "_".join([name, ConstraintGenerator._RIGHT_EXTREME_RAY_CONSTRAINT_NAME_SUFFIX])
+        name_ = "_".join([name, ConstraintGenerationUtilities._RIGHT_EXTREME_RAY_CONSTRAINT_NAME_SUFFIX])
         constraints.append(model.add_constraint(lhs, name_, rhs, GRB.LESS_EQUAL, region_constraint=True))
         return constraints
 
@@ -43,7 +43,7 @@ class ConstraintGenerator:
         """Creates and adds the constraint to the model for the given edge, returns the constraint"""
         assert isinstance(edge, EdgeInTwoDimension)
         name = name or str(id(edge))
-        name_ = "_".join([ConstraintGenerator._EDGE_CONSTRAINT_NAME_PREFIX, name])
+        name_ = "_".join([ConstraintGenerationUtilities._EDGE_CONSTRAINT_NAME_PREFIX, name])
         left_point = edge.left_point()
         right_point = edge.right_point()
         if (left_point.z1() - right_point.z1()) == 0:
@@ -60,11 +60,11 @@ class ConstraintGenerator:
         """Creates and adds the constraints to the model for the given lower bound, returns the constraints"""
         assert isinstance(lower_bound, LowerBoundInTwoDimension)
         name = name or str(id(lower_bound))
-        name_ = "_".join([ConstraintGenerator._LOWER_BOUND_CONSTRAINT_NAME_PREFIX, name, "z1"])
+        name_ = "_".join([ConstraintGenerationUtilities._LOWER_BOUND_CONSTRAINT_NAME_PREFIX, name, "z1"])
         constraints = []
         constraints.append(
             model.add_constraint(x_var, name_, lower_bound.z1(), GRB.GREATER_EQUAL, region_constraint=True))
-        name_ = "_".join([ConstraintGenerator._LOWER_BOUND_CONSTRAINT_NAME_PREFIX, name, "z2"])
+        name_ = "_".join([ConstraintGenerationUtilities._LOWER_BOUND_CONSTRAINT_NAME_PREFIX, name, "z2"])
         if lower_bound.z2():
             constraints.append(
                 model.add_constraint(y_var, name_, lower_bound.z2(), GRB.GREATER_EQUAL, region_constraint=True))
@@ -87,7 +87,7 @@ class ModelQueryUtilities:
             raise RuntimeError(message)
         values = []
         for obj_index in range(model.getAttr("NumObj")):
-            model.setParam("ObjNumber", obj_index)
-            values.append(model.getAttr("ObjVal"))
-        y_bar = [var.x() for var in model.getVars() if var.getAttr("VType") == "B" or var.getAttr("VType") == "I"]
+            obj = model.getObjective(index=obj_index)
+            values.append(obj.getValue())
+        y_bar = [var.x for var in model.getVars() if var.getAttr("VType") == "B" or var.getAttr("VType") == "I"]
         return PointSolution(Point(values), y_bar)

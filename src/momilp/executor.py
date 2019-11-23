@@ -52,3 +52,6 @@ class MomilpSolverApp:
     def run(self):
         """Runs the command line application"""
         args = self._parse_args()
+        model = GurobiMomilpModel(file_name=args.model_file_path)
+        executor = Executor(model)
+        executor.execute()

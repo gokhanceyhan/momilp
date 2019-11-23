@@ -1,7 +1,7 @@
 """Implements the momilp model"""
 
 import abc
-from gurobipy import GRB, Model, QuadExpr, read
+from gurobipy import GRB, LinExpr, Model, QuadExpr, read
 from operator import itemgetter
 from src.momilp.elements import SolverStage
 from src.momilp.utility import ModelQueryUtilities
@@ -106,13 +106,12 @@ class GurobiMomilpModel(AbstractModel):
             self._constraint_name_2_constraint[constraint.getAttr("ConstrName")] = constraint
         for obj_index in range(model.getAttr("NumObj")):
             model.setParam("ObjNumber", obj_index)
-            obj = model.getObjective()
             name = model.getAttr("ObjNName")
-            # define continuous variables for the objective functions to ease the constraint creation in the objective 
-            # space
+            obj = model.getObjective(index=obj_index)
+            # define continuous variables for the objective functions
             obj_var = model.addVar(name=name)
-            lhs = obj - obj_var if obj.sense() == GRB.MAXIMIZE else obj + obj_var
-            self.add_constraint(lhs, name, 0.0, GRB.EQUAL)
+            self.add_constraint(
+                obj - obj_var if model.getAttr("ModelSense") == GRB.MAXIMIZE else obj + obj_var, name, 0.0, GRB.EQUAL)
             self._objective_name_2_variable[name] = obj_var
         model.update()
 
@@ -127,19 +126,18 @@ class GurobiMomilpModel(AbstractModel):
             max_priority = max(max_priority, priority)
         for index in range(self._num_obj):
             model.setParam("ObjNumber", index)
-            obj_name = model.getAttr("ObjNName")
             priority = model.getAttr("ObjNPriority")
-            obj = model.get_objective()
             # make the objective as the highest priority objective
-            model.setParam("ObjNPriority", max_priority + 1)
+            model.setAttr("ObjNPriority", max_priority + 1)
             # maximize
-            model.setObjective(obj, sense=GRB.MAXIMIZE)
+            model.setAttr("ModelSense", -1)
             model.optimize()
             max_point_sol = ModelQueryUtilities.query_optimal_solution(model, SolverStage.MODEL_SCALING)
             # minimize
-            model.setObjective(obj, sense=GRB.MINIMIZE)
+            model.setAttr("ModelSense", 1)
             model.optimize()
             min_point_sol = ModelQueryUtilities.query_optimal_solution(model, SolverStage.MODEL_SCALING)
+            obj_name = model.getAttr("ObjNName")
             self._objective_name_2_range[obj_name] = ObjectiveRange(max_point_sol, min_point_sol)
             
             def obj_scaler(value, obj_min=min_point_sol.point().values()[index]):
@@ -147,7 +145,7 @@ class GurobiMomilpModel(AbstractModel):
 
             self._objective_name_2_scaler[obj_name] = obj_scaler
             # restore the original priority of the objective
-            model.setParam("ObjNPriority", priority)
+            model.setAttr("ObjNPriority", priority)
         model.update()
 
     def _set_params(self, log_to_console=False, log_to_file=True, model_name=None):
@@ -178,7 +176,7 @@ class GurobiMomilpModel(AbstractModel):
             message = "The model '%s' has '%s' objectives whereas the specified value is '%s'" % (
                 model_name, model_num_obj, num_obj)
             raise ValueError(message)
-        num_obj = num_obj or model_num_obj
+        self._num_obj = num_obj or model_num_obj
         objective_index_and_priorities = []
         for obj_index in range(model.getAttr("NumObj")):
             model.setParam("ObjNumber", obj_index)
@@ -240,10 +238,18 @@ class GurobiMomilpModel(AbstractModel):
         return self._model.getAttr("NumIntVars")
 
     def num_obj(self):
-        return self._model.getAttr("NumObj")
+        return self._num_obj
 
     def objective(self, index):
         return self._model.getObjective(index=index)
+
+    def objective_name_2_range(self):
+        """Returns the objective name to objective range"""
+        return self._objective_name_2_range
+
+    def objective_name_2_scaler(self):
+        """Returns the objective name to scaler"""
+        return self._objective_name_2_scaler
 
     def problem(self):
         return self._model
