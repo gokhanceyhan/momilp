@@ -15,12 +15,14 @@ class GurobiMomilpModelTest(TestCase):
     # TO_DO: Add an example model with at least one objective having unbounded maximum
     # TO_DO: Add an exmaple model which is infeasible
 
+    # TO_DO: Test constraint deletion
+
     def setUp(self):
         self._test_data_dir = os.path.join(os.environ["PYTHON_TEST_PATH"], "data") 
         self.assert_that = assert_that
 
-    def test_three_obj_binary_linear_programming_problem(self):
-        """Tests the model of a three-objective binary linear program"""
+    def test_create_three_obj_binary_linear_programming_problem(self):
+        """Tests the creation of a three-objective binary linear program"""
         file_name = os.path.join(self._test_data_dir, "three_obj_blp.lp")
         model = GurobiMomilpModel(file_name=file_name)
         self.assert_that(model.num_obj(), is_(3))

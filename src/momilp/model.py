@@ -4,7 +4,7 @@ import abc
 from gurobipy import GRB, LinExpr, Model, QuadExpr, read
 from operator import itemgetter
 from src.momilp.elements import SolverStage
-from src.momilp.utility import ModelQueryUtilities
+from src.momilp.utilities import ModelQueryUtilities
 
 
 class AbstractModel(metaclass=abc.ABCMeta):
@@ -24,7 +24,7 @@ class AbstractModel(metaclass=abc.ABCMeta):
         """Creates the constraint of 'y = y_bar'"""
 
     @abc.abstractmethod
-    def int_vars(self):
+    def y(self):
         """Returns the integer decision variables in the problem"""
 
     @abc.abstractmethod
@@ -91,10 +91,12 @@ class GurobiMomilpModel(AbstractModel):
             log_to_console=log_to_console, log_to_file=log_to_file, model_name=GurobiMomilpModel._MODEL_NAME)
         self._validate()
         self._constraint_name_2_constraint = {}
+        self._int_var_2_original_lb_and_ub = {}
         self._objective_name_2_range = {}
         self._objective_name_2_scaler = {}
         self._objective_name_2_variable = {}
         self._region_defining_constraint_names = []
+        self._tabu_constraint_names = []
         self._initialize()
         if scale:
             self._scale_model()
@@ -113,6 +115,8 @@ class GurobiMomilpModel(AbstractModel):
             self.add_constraint(
                 obj - obj_var if model.getAttr("ModelSense") == GRB.MAXIMIZE else obj + obj_var, name, 0.0, GRB.EQUAL)
             self._objective_name_2_variable[name] = obj_var
+        # save the original bounds of the integer variables
+        self._int_var_2_original_lb_and_ub = {var: (var.LB, var.UB) for var in self.y()}
         model.update()
 
     def _scale_model(self):
@@ -132,11 +136,13 @@ class GurobiMomilpModel(AbstractModel):
             # maximize
             model.setAttr("ModelSense", -1)
             model.optimize()
-            max_point_sol = ModelQueryUtilities.query_optimal_solution(model, SolverStage.MODEL_SCALING)
+            max_point_sol = ModelQueryUtilities.query_optimal_solution(
+                model, SolverStage.MODEL_SCALING).point_solution()
             # minimize
             model.setAttr("ModelSense", 1)
             model.optimize()
-            min_point_sol = ModelQueryUtilities.query_optimal_solution(model, SolverStage.MODEL_SCALING)
+            min_point_sol = ModelQueryUtilities.query_optimal_solution(
+                model, SolverStage.MODEL_SCALING).point_solution()
             obj_name = model.getAttr("ObjNName")
             self._objective_name_2_range[obj_name] = ObjectiveRange(max_point_sol, min_point_sol)
             
@@ -195,7 +201,7 @@ class GurobiMomilpModel(AbstractModel):
                 top_objective_index, discrete_objective_indices)
             raise ValueError(message)
     
-    def add_constraint(self, lhs, name, rhs, sense, region_constraint=False):
+    def add_constraint(self, lhs, name, rhs, sense, region_constraint=False, tabu_constraint=False):
         try:
             assert not isinstance(lhs, QuadExpr)
             assert not isinstance(rhs, QuadExpr)
@@ -207,7 +213,17 @@ class GurobiMomilpModel(AbstractModel):
         self._constraint_name_2_constraint[name] = constraint
         if region_constraint:
             self._region_defining_constraint_names.append(name)
+        if tabu_constraint:
+            self._tabu_constraint_names.append(name)
         return constraint
+
+    def binary(self):
+        """Returns True if this is a binary-integer model, False otherwise."""
+        y = self.y()
+        for y_ in y:
+            if y_.LB < 0 or y_.UB > 1:
+                return False
+        return True
 
     def change_objective_priorities(self, obj_num_2_priority):
         """Changes the priorities of the objectives based on the given objective number to priority dictionary"""
@@ -220,13 +236,12 @@ class GurobiMomilpModel(AbstractModel):
         return self._model.copy()
 
     def fix_integer_vector(self, y_bar):
-        # TO_DO: make sure that the order of the variables in 'y_bar' and 'int_vars' is the same.
-        int_vars = self.int_vars()
-        for int_var, y_bar_ in zip(int_vars, y_bar):
-            int_var.setAttr("LB", y_bar_)
-            int_var.setAttr("UB", y_bar_)
+        y = self.y()
+        for y_, y_bar_ in zip(y, y_bar):
+            y_.setAttr("LB", y_bar_)
+            y_.setAttr("UB", y_bar_)
 
-    def int_vars(self):
+    def y(self):
         vars_ = self._model.getVars()
         return [var for var in vars_ if var.getAttr("VType") == "B" or var.getAttr("VType") == "I"]
 
@@ -255,7 +270,7 @@ class GurobiMomilpModel(AbstractModel):
         return self._model
 
     def region_defining_constraint_names(self):
-        """Returns the region defininf constraint names"""
+        """Returns the region defining constraint names"""
         return self._region_defining_constraint_names
 
     def remove_constraint(self, constraint_names):
@@ -268,6 +283,19 @@ class GurobiMomilpModel(AbstractModel):
             del self._constraint_name_2_constraint[constraint_name]
             if constraint_name in self._region_defining_constraint_names:
                 self._region_defining_constraint_names.remove(constraint_name)
+            if constraint_name in self._tabu_constraint_names:
+                self._tabu_constraint_names.remove(constraint_name)
+
+    def restore_original_bounds_of_integer_variables(self):
+        """Removes the posteriori-added bounds on the y-vector if there exist any"""
+        y = self.y()
+        for y_ in y:
+            y_.setAttr("LB", self._int_var_2_original_lb_and_ub[y_][0])
+            y_.setAttr("UB", self._int_var_2_original_lb_and_ub[y_][1])
+
+    def tabu_constraint_names(self):
+        """Returns the tabu constraint names"""
+        return self._tabu_constraint_names
 
     def solve(self):
         self._model.optimize()

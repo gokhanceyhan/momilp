@@ -1,41 +1,116 @@
 """Implements the search space elements and models"""
 
+import abc
 from enum import Enum
 from gurobipy import Var
 from src.momilp.elements import SearchRegionInTwoDimension
-from src.momilp.utility import ConstraintGenerationUtilities
+from src.momilp.utilities import ConstraintGenerationUtilities, ModelQueryUtilities
 
 
-class SearchProblem:
+class Problem(metaclass=abc.ABCMeta):
+
+    """Implements abstact problem class"""
+
+    _SUPPORTED_SEARCH_REGION_NUM_DIMENSIONS = [2]
+    _UNSUPPORTED_SEARCH_REGION_DIMENSION_ERROR = \
+        "the search region dimension of '%s' is not supported in the problem, the supported dimensions are '%s'"
+
+    def __init__(self, momilp_model):
+        self._momilp_model = momilp_model
+
+    def _add_region_defining_constraints_in_two_dimension(self, region):
+        """Adds the linear constraints to the model to restrict the feasible criterion space in 'x_obj_name' and 
+        'y_obj_name' criteria to the specified region"""
+        momilp_model = self._momilp_model
+        x_var = momilp_model.Z()[region.x_obj_name()]
+        y_var = momilp_model.Z()[region.y_obj_name()]
+        ConstraintGenerationUtilities.create_constraints_for_cone_in_positive_quadrant(
+            momilp_model, region.cone(), x_var, y_var, name=region.id())
+        ConstraintGenerationUtilities.create_constraint_for_edge_in_two_dimension(
+            momilp_model, region.edge(), x_var, y_var, name=region.id())
+        ConstraintGenerationUtilities.create_constraints_for_lower_bound_in_two_dimension(
+            momilp_model, region.lower_bound(), x_var, y_var, name=region.id())
+
+    def _remove_region_defining_constraints(self):
+        """Removes all the region defining constraints from the model"""
+        momilp_model = self._momilp_model
+        region_defining_constraint_names = momilp_model.region_defining_constraint_names()
+        momilp_model.remove_constraint(region_defining_constraint_names)
+
+    @staticmethod
+    def _validate_search_region(region):
+        """Validates the search region"""
+        try:
+            assert isinstance(region, SearchRegionInTwoDimension)
+        except AssertionError as error:
+            message = Problem._UNSUPPORTED_SEARCH_REGION_DIMENSION_ERROR % (
+                region.dim(), Problem._SUPPORTED_SEARCH_REGION_NUM_DIMENSIONS)
+            raise RuntimeError(message) from error
+    
+    @abc.abstractmethod
+    def result(self):
+        """Returns the problem result"""
+    
+    @abc.abstractmethod
+    def update_model(self, **kwargs):
+        """Updates the model"""
+
+    @abc.abstractmethod
+    def solve(self):
+        """Solves the problem"""
+
+
+class SearchProblem(Problem):
 
     """Implements search problem to find nondominated points"""
 
-    _DEFAULT_DIMEMSION = 3
+    _TABU_CONSTRAINT_NAME_TEMPLATE = "tabu_{idx}"
 
-    def __init__(self, model, region, dimension=None, tabu_constraints=None):
-        self._dimension = dimension or SearchProblem._DEFAULT_DIMEMSION
-        self._frontier = None
-        self._model = model
-        self._region = region
-        self._tabu_constraints = tabu_constraints or []
-        self._y = None
-        self._validate()
+    def __init__(self, momilp_model):
+        super(SearchProblem, self).__init__(momilp_model)
+        self._num_tabu_constraints = 0
+        self._result = None
 
-    def _validate(self):
-        """Validates the search problem in three dimension"""
+    def _add_tabu_constraint(self, y_bars):
+        """Adds the tabu-constraints to the model for the given integer vectors"""
+        momilp_model = self._momilp_model
+        y_bars = y_bars if isinstance(y_bars, list) else [y_bars]
+        binary_model = momilp_model.binary()
+        for y_bar in y_bars:
+            constraint_name = SearchProblem._TABU_CONSTRAINT_NAME_TEMPLATE.format(idx=self._num_tabu_constraints)
+            if binary_model:
+                ConstraintGenerationUtilities.create_binary_tabu_constraint(momilp_model, constraint_name, y_bar)
+            else:
+                ConstraintGenerationUtilities.create_integer_tabu_constraint(momilp_model, constraint_name, y_bar)
+            self._num_tabu_constraints += 1
+
+    def _remove_tabu_constraints(self):
+        """Removes the tabu-constraints in the model"""
+        momilp_model = self._momilp_model
+        tabu_constraint_names = momilp_model.tabu_constraint_names()
+        momilp_model.remove_constraint(tabu_constraint_names)
+
+    def result(self):
+        self._result
 
     def solve(self):
-        """Solves the search problem and returns the search result"""
+        momilp_model = self._momilp_model
+        momilp_model.solve()
+        self._result = ModelQueryUtilities.query_optimal_solution(momilp_model.model())
+        return self._result
 
-
-class SearchResult:
-
-    """Implements search result"""
-
-    def __init__(self, status, y_opt=None, z_opt=None):
-        self._status = status
-        self._y_opt = y_opt
-        self._z_opt = z_opt
+    def update_model(
+            self, keep_previous_region_constraints=False, keep_previous_tabu_constraints=False, region=None, 
+            tabu_y_bars=None):
+        if not keep_previous_region_constraints:
+            self._remove_region_defining_constraints()
+        if region:
+            SearchProblem._validate_search_region(region)
+            self._add_region_defining_constraints_in_two_dimension(region)
+        if not keep_previous_tabu_constraints:
+            self._remove_tabu_constraints()
+        if tabu_y_bars:
+            self._add_tabu_constraint(tabu_y_bars)
 
 
 class SearchSpace:
@@ -57,73 +132,39 @@ class SearchSpace:
         """Updates the search space"""
 
 
-class SearchStatus(Enum):
-
-    """Implements search status"""
-
-    FEASIBLE = "feasible"
-    INFEASIBLE = "infeasible"
-    OPTIMAL = "optimal"
-
-
-class SliceProblem:
+class SliceProblem(Problem):
 
     """Implement slice problem"""
 
-    _SUPPORTED_SEARCH_REGION_NUM_DIMENSIONS = [2]
-    _UNSUPPORTED_SEARCH_REGION_DIMENSION_ERROR = \
-        "the search region dimension of '%s' is not supported in the slice problem, the supported dimensions are '%s'"
+    _INVALID_INTEGER_VECTOR_ERROR_MESSAGE = "Failed to validate the problem for y='%s' and y_bar='%s'"
 
-    def __init__(self, model):
-        self._model = model
+    def __init__(self, momilp_model):
+        super(SliceProblem, self).__init__(momilp_model)
+        self._result = None
 
-    def _add_region_defining_constraints_in_two_dimension(self, region):
-        """Adds the linear constraints to the model to restrict the feasible criterion space in 'x_obj_name' and 
-        'y_obj_name' criteria to the specified region"""
-        if not isinstance(region, SearchRegionInTwoDimension):
-            message = SliceProblem._UNSUPPORTED_SEARCH_REGION_DIMENSION_ERROR % (
-                region.dim(), SliceProblem._SUPPORTED_SEARCH_REGION_NUM_DIMENSIONS)
-            raise ValueError(message)
-        model = self._model
-        x_var = model.Z()[region.x_obj_name()]
-        y_var = model.Z()[region.y_obj_name()]
-        ConstraintGenerationUtilities.create_constraints_for_cone_in_positive_quadrant(
-            model, region.cone(), x_var, y_var, name=region.id())
-        ConstraintGenerationUtilities.create_constraint_for_edge_in_two_dimension(
-            model, region.edge(), x_var, y_var, name=region.id())
-        ConstraintGenerationUtilities.create_constraints_for_lower_bound_in_two_dimension(
-            model, region.lower_bound(), x_var, y_var, name=region.id())
-
-    def _remove_region_defining_constraints(self):
-        """Removes all the region defining constraints from the model"""
-        model = self._model
-        region_defining_constraint_names = model.region_defining_constraint_names()
-        model.remove_constraint(region_defining_constraint_names)
-
-    def _update_model(self, y_bar, region=None):
-        """Updates the model"""
-        self._model.fix_integer_vector(y_bar)
-        if not region:
-            return
-        self._remove_region_defining_constraints()
-        if isinstance(region, SearchRegionInTwoDimension):
-            self._add_region_defining_constraints_in_two_dimension(region)
-
-    def _validate(self, y_bar):
-        """Validates the slice problem"""
-        assert all([isinstance(y_bar_, int) for y_bar_ in y_bar])
-        y = self._model.int_vars()
-        assert all([isinstance(y_, Var) for y_ in y])
-        assert len(y_bar) == len(y)
-        assert all([y_.getAttr("LB") <= y_bar_ <= y_.getAttr("UB") for y_, y_bar_ in zip(y, y_bar)])
-
-    def solve(self, y_bar, region=None):
-        """Solves the slice problem for the given integer vector and return the nondominated frontier"""
+    def _validate_integer_vector(self, y_bar):
+        """Validates the integer vector"""
+        y = self._momilp_model.y()
         try:
-            self._validate(y_bar)
+            assert all([isinstance(y_bar_, int) for y_bar_ in y_bar])
+            assert len(y_bar) == len(y)
+            assert all([y_.getAttr("LB") <= y_bar_ <= y_.getAttr("UB") for y_, y_bar_ in zip(y, y_bar)])
         except AssertionError as error:
-            message = "Failed to validate the slice problem for y='%s' and y_bar='%s'" % (
-                self._model.int_vars(), str(y_bar))
+            message = SliceProblem._INVALID_INTEGER_VECTOR_ERROR_MESSAGE % (y, str(y_bar))
             raise RuntimeError(message) from error
-        self._update_model(y_bar, region)
-        self._model.solve()
+    
+    def result(self):
+        return self._result
+
+    def solve(self):
+        self._momilp_model.solve()
+
+    def update_model(self, keep_previous_region_constraints=False, region=None, y_bar=None):
+        if y_bar:
+            self._validate_integer_vector(y_bar)
+            self._momilp_model.fix_integer_vector(y_bar)
+        if not keep_previous_region_constraints:
+            self._remove_region_defining_constraints()
+        if region:
+            SliceProblem._validate_search_region(region)
+            self._add_region_defining_constraints_in_two_dimension(region)

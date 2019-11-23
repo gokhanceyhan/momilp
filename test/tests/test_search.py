@@ -28,7 +28,8 @@ class SliceProblemTest(TestCase):
         lb = LowerBoundInTwoDimension([6.5, 6])
         region = SearchRegionInTwoDimension(cone, edge=edge, lower_bound=lb, x_obj_name="Set0", y_obj_name="Set1")
         y_bar = [1] * 12 + [0] * 8
-        slice_problem.solve(y_bar, region=region)
+        slice_problem.update_model(region=region, y_bar=y_bar)
+        slice_problem.solve()
 
     def test_unrestricted_slice_problem(self):
         """Tests the slice problem without any region constraints"""
@@ -36,6 +37,5 @@ class SliceProblemTest(TestCase):
         model = GurobiMomilpModel(file_name=file_name)
         slice_problem = SliceProblem(model)
         y_bar = [1] * 12 + [0] * 8
-        slice_problem.solve(y_bar)
-        
-        
+        slice_problem.update_model(y_bar=y_bar)
+        slice_problem.solve()

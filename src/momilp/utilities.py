@@ -1,9 +1,9 @@
 """Implements utilities for the momilp solver"""
 
-from gurobipy import Constr, GRB
+from gurobipy import Constr, GRB, LinExpr
 import math
 from src.momilp.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension, LowerBoundInTwoDimension, \
-    Point, PointSolution
+    Point, PointSolution, SearchProblemResult
 
 
 class ConstraintGenerationUtilities:
@@ -16,7 +16,20 @@ class ConstraintGenerationUtilities:
     _RIGHT_EXTREME_RAY_CONSTRAINT_NAME_SUFFIX = "right_extr_ray"
 
     @staticmethod
-    def create_constraints_for_cone_in_positive_quadrant(model, cone, x_var, y_var, name=None):
+    def create_binary_tabu_constraint(momilp_model, name, y_bar):
+        """Creates and adds the tabu-constraints to the model to exclude the binary y-vectors from the feasible set"""
+        model = momilp_model.model()
+        y = model.y()        
+        lhs = LinExpr()
+        rhs = 1
+        for y_, y_bar_ in zip(y, y_bar):
+            coeff = -1 if y_bar_ == 1 else 1
+            rhs = rhs - 1 if y_bar_ else rhs
+            lhs.add(y_, coeff)
+        momilp_model.add_constraint(lhs, name, rhs, GRB.GREATER_EQUAL, tabu_constraint=True)
+
+    @staticmethod
+    def create_constraints_for_cone_in_positive_quadrant(momilp_model, cone, x_var, y_var, name=None):
         """Creates and adds the constraints to the model for the given cone, returns the constraints"""
         assert isinstance(cone, ConvexConeInPositiveQuadrant)
         constraints = []
@@ -28,18 +41,19 @@ class ConstraintGenerationUtilities:
         lhs = x_coeff * x_var - y_coeff * y_var
         rhs = 0.0
         name_ = "_".join([name, ConstraintGenerationUtilities._LEFT_EXTREME_RAY_CONSTRAINT_NAME_SUFFIX])
-        constraints.append(model.add_constraint(lhs, name_, rhs, GRB.GREATER_EQUAL, region_constraint=True))
+        constraints.append(momilp_model.add_constraint(lhs, name_, rhs, GRB.GREATER_EQUAL, region_constraint=True))
         right_extreme_ray = cone.right_extreme_ray()
         x_coeff = math.tan(math.radians(right_extreme_ray.angle_in_degrees()))
         y_coeff = 1.0
         lhs = x_coeff * x_var - y_coeff * y_var
         rhs = 0.0
         name_ = "_".join([name, ConstraintGenerationUtilities._RIGHT_EXTREME_RAY_CONSTRAINT_NAME_SUFFIX])
-        constraints.append(model.add_constraint(lhs, name_, rhs, GRB.LESS_EQUAL, region_constraint=True))
+        constraints.append(momilp_model.add_constraint(lhs, name_, rhs, GRB.LESS_EQUAL, region_constraint=True))
         return constraints
 
     @staticmethod
-    def create_constraint_for_edge_in_two_dimension(model, edge, x_var, y_var, name=None, sense=GRB.GREATER_EQUAL):
+    def create_constraint_for_edge_in_two_dimension(
+            momilp_model, edge, x_var, y_var, name=None, sense=GRB.GREATER_EQUAL):
         """Creates and adds the constraint to the model for the given edge, returns the constraint"""
         assert isinstance(edge, EdgeInTwoDimension)
         name = name or str(id(edge))
@@ -47,28 +61,33 @@ class ConstraintGenerationUtilities:
         left_point = edge.left_point()
         right_point = edge.right_point()
         if (left_point.z1() - right_point.z1()) == 0:
-            return model.add_constraint(x_var, name_, left_point.z1(), sense, region_constraint=True)
+            return momilp_model.add_constraint(x_var, name_, left_point.z1(), sense, region_constraint=True)
         m = (left_point.z2() - right_point.z2()) / (left_point.z1() - right_point.z1())
         x_coeff = -1 * m
         y_coeff = 1.0
         lhs = x_coeff * x_var + y_coeff * y_var   
         rhs = left_point.z2() - m * left_point.z1()
-        return model.add_constraint(lhs, name_, rhs, sense, region_constraint=True)
+        return momilp_model.add_constraint(lhs, name_, rhs, sense, region_constraint=True)
 
     @staticmethod
-    def create_constraints_for_lower_bound_in_two_dimension(model, lower_bound, x_var, y_var, name=None):
+    def create_constraints_for_lower_bound_in_two_dimension(momilp_model, lower_bound, x_var, y_var, name=None):
         """Creates and adds the constraints to the model for the given lower bound, returns the constraints"""
         assert isinstance(lower_bound, LowerBoundInTwoDimension)
         name = name or str(id(lower_bound))
         name_ = "_".join([ConstraintGenerationUtilities._LOWER_BOUND_CONSTRAINT_NAME_PREFIX, name, "z1"])
         constraints = []
         constraints.append(
-            model.add_constraint(x_var, name_, lower_bound.z1(), GRB.GREATER_EQUAL, region_constraint=True))
+            momilp_model.add_constraint(x_var, name_, lower_bound.z1(), GRB.GREATER_EQUAL, region_constraint=True))
         name_ = "_".join([ConstraintGenerationUtilities._LOWER_BOUND_CONSTRAINT_NAME_PREFIX, name, "z2"])
         if lower_bound.z2():
             constraints.append(
-                model.add_constraint(y_var, name_, lower_bound.z2(), GRB.GREATER_EQUAL, region_constraint=True))
+                momilp_model.add_constraint(y_var, name_, lower_bound.z2(), GRB.GREATER_EQUAL, region_constraint=True))
         return constraints
+
+    @staticmethod
+    def create_integer_tabu_constraint(momilp_model, name, y_bar):
+        """Creates and adds the tabu-constraints to the model to exclude the integer y-vectors from the feasible set"""
+        raise NotImplementedError()
 
 
 class ModelQueryUtilities:
@@ -90,4 +109,4 @@ class ModelQueryUtilities:
             obj = model.getObjective(index=obj_index)
             values.append(obj.getValue())
         y_bar = [var.x for var in model.getVars() if var.getAttr("VType") == "B" or var.getAttr("VType") == "I"]
-        return PointSolution(Point(values), y_bar)
+        return SearchProblemResult(PointSolution(Point(values), y_bar), status)

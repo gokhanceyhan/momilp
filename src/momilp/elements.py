@@ -172,6 +172,19 @@ class FrontierEdgeInTwoDimension(EdgeInTwoDimension):
         raise ValueError("the edge cannot be a part of a nondominated frontier")
 
 
+class FrontierSolution(Solution):
+
+    """Implements a solution to the problem with a corresponding frontier in the objective space"""
+
+    def __init__(self, frontier, y_bar):
+        super(FrontierSolution, self).__init__(y_bar)
+        self._frontier = frontier
+
+    def frontier(self):
+        """Returns the frontier"""
+        return self._frontier
+
+
 class LowerBound:
     
     """Implements lower bound in the space of the momilp problem"""
@@ -302,6 +315,23 @@ class RayInTwoDimension:
         return self._origin
 
 
+class SearchProblemResult:
+
+    """Implements search problem result"""
+
+    def __init__(self, point_solution, status):
+        self._point_solution = point_solution
+        self._status = status
+
+    def point_solution(self):
+        """Returns the point solution"""
+        return self._point_solution
+
+    def status(self):
+        """Returns the optimization status"""
+        return self._status
+
+
 class SearchRegion(metaclass=abc.ABCMeta):
 
     """Implements search region"""
@@ -383,6 +413,32 @@ class SearchRegionInTwoDimension(SearchRegion):
     def y_obj_name(self):
         """Returns the obj name for the y-axis of the region"""
         return self._y_obj_name
+
+
+class SearchStatus(Enum):
+
+    """Implements search status"""
+
+    FEASIBLE = "feasible"
+    INFEASIBLE = "infeasible"
+    OPTIMAL = "optimal"
+
+
+class SliceProblemResult:
+
+    """Implements slice problem result"""
+
+    def __init__(self, frontier_solution, status):
+        self._frontier_solution = frontier_solution
+        self._status = status
+
+    def frontier_solution(self):
+        """Returns the frontier solution"""
+        return self._frontier_solution
+
+    def status(self):
+        """Returns the optimization status"""
+        return self._status
 
 
 class SolutionSet:

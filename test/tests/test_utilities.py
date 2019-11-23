@@ -6,7 +6,7 @@ import os
 from src.momilp.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension, LowerBoundInTwoDimension, \
     PointInTwoDimension, RayInTwoDimension
 from src.momilp.model import GurobiMomilpModel
-from src.momilp.utility import ConstraintGenerationUtilities
+from src.momilp.utilities import ConstraintGenerationUtilities
 from unittest import TestCase
 
 class ConstraintGenerationUtilitiesTest(TestCase):
