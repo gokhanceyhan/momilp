@@ -18,8 +18,7 @@ class ConstraintGenerationUtilities:
     @staticmethod
     def create_binary_tabu_constraint(momilp_model, name, y_bar):
         """Creates and adds the tabu-constraints to the model to exclude the binary y-vectors from the feasible set"""
-        model = momilp_model.model()
-        y = model.y()        
+        y = momilp_model.y()        
         lhs = LinExpr()
         rhs = 1
         for y_, y_bar_ in zip(y, y_bar):

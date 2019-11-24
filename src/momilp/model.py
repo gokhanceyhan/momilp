@@ -122,6 +122,7 @@ class GurobiMomilpModel(AbstractModel):
     def _scale_model(self):
         """Scales the model"""
         model = self._model
+        sense = model.getAttr("ModelSense")
         # Implement the procedure to transform the feasible objective space into R_{>=0}
         max_priority = 0
         for index in range(self._num_obj):
@@ -152,6 +153,8 @@ class GurobiMomilpModel(AbstractModel):
             self._objective_name_2_scaler[obj_name] = obj_scaler
             # restore the original priority of the objective
             model.setAttr("ObjNPriority", priority)
+        # restore the original objective sense
+        model.setAttr("ModelSense", sense)
         model.update()
 
     def _set_params(self, log_to_console=False, log_to_file=True, model_name=None):
@@ -232,6 +235,10 @@ class GurobiMomilpModel(AbstractModel):
             model.setParam("ObjNumber", obj_num)
             priority = model.setAttr("ObjNPriority", priority)
 
+    def constraint_name_2_constraint(self):
+        """Returns the constraint name to constraint"""
+        return self._constraint_name_2_constraint
+    
     def copy(self):
         return self._model.copy()
 

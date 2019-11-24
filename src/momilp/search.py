@@ -47,6 +47,10 @@ class Problem(metaclass=abc.ABCMeta):
                 region.dim(), Problem._SUPPORTED_SEARCH_REGION_NUM_DIMENSIONS)
             raise RuntimeError(message) from error
     
+    def momilp_model(self):
+        """Returns the momilp model"""
+        return self._momilp_model
+
     @abc.abstractmethod
     def result(self):
         """Returns the problem result"""
@@ -74,7 +78,6 @@ class SearchProblem(Problem):
     def _add_tabu_constraint(self, y_bars):
         """Adds the tabu-constraints to the model for the given integer vectors"""
         momilp_model = self._momilp_model
-        y_bars = y_bars if isinstance(y_bars, list) else [y_bars]
         binary_model = momilp_model.binary()
         for y_bar in y_bars:
             constraint_name = SearchProblem._TABU_CONSTRAINT_NAME_TEMPLATE.format(idx=self._num_tabu_constraints)
@@ -89,6 +92,11 @@ class SearchProblem(Problem):
         momilp_model = self._momilp_model
         tabu_constraint_names = momilp_model.tabu_constraint_names()
         momilp_model.remove_constraint(tabu_constraint_names)
+        self._num_tabu_constraints = 0
+
+    def num_tabu_constraints(self):
+        """Returns the number of tabu-constraints"""
+        return self._num_tabu_constraints
 
     def result(self):
         self._result

@@ -1,12 +1,12 @@
 """Implements tests for momilp solver search"""
 
-from hamcrest import assert_that, is_
-import gurobipy
+from hamcrest import assert_that, has_key, is_
+from gurobipy import GRB
 import os
 from src.momilp.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension, LowerBoundInTwoDimension, \
     PointInTwoDimension, RayInTwoDimension, SearchRegionInTwoDimension
 from src.momilp.model import GurobiMomilpModel
-from src.momilp.search import SliceProblem
+from src.momilp.search import SearchProblem, SliceProblem
 from unittest import TestCase
 
 class SliceProblemTest(TestCase):
@@ -39,3 +39,56 @@ class SliceProblemTest(TestCase):
         y_bar = [1] * 12 + [0] * 8
         slice_problem.update_model(y_bar=y_bar)
         slice_problem.solve()
+
+
+class SearchProblemTest(TestCase):
+
+    """Implements tests for the search problem"""
+
+    def setUp(self):
+        self._test_data_dir = os.path.join(os.environ["PYTHON_TEST_PATH"], "data") 
+        self.assert_that = assert_that
+
+    def test_tabu_constraint_handling(self):
+        """Tests handling the tabu-constraints in the problem"""
+        file_name = os.path.join(self._test_data_dir, "three_obj_blp.lp")
+        model = GurobiMomilpModel(file_name=file_name)
+        search_problem = SearchProblem(model)
+        result = search_problem.solve()
+        point_solution = result.point_solution()
+        # check the unrestricted search problem
+        self.assert_that(result.status(), is_(GRB.OPTIMAL))
+        y_opt = [
+            1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        self.assert_that(point_solution.y_bar(), is_(y_opt))
+        # restrict the optimal integer vector
+        search_problem.update_model(tabu_y_bars=[y_opt])
+        self.assert_that(search_problem.num_tabu_constraints(), is_(1))
+        self.assert_that(model.constraint_name_2_constraint(), has_key("tabu_0"))
+        result = search_problem.solve()
+        point_solution = result.point_solution()
+        self.assert_that(result.status(), is_(GRB.OPTIMAL))
+        y_opt = [
+            1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        self.assert_that(point_solution.y_bar(), is_(y_opt))
+        # add one more constraint
+        search_problem.update_model(keep_previous_tabu_constraints=True, tabu_y_bars=[y_opt])
+        self.assert_that(search_problem.num_tabu_constraints(), is_(2))
+        self.assert_that(model.constraint_name_2_constraint(), has_key("tabu_1"))
+        result = search_problem.solve()
+        point_solution = result.point_solution()
+        self.assert_that(result.status(), is_(GRB.OPTIMAL))
+        y_opt = [
+            1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        self.assert_that(point_solution.y_bar(), is_(y_opt))
+        # add a single constraint, and remove the older ones
+        search_problem.update_model(tabu_y_bars=[y_opt])
+        self.assert_that(search_problem.num_tabu_constraints(), is_(1))
+        self.assert_that(model.constraint_name_2_constraint(), has_key("tabu_0"))
+        result = search_problem.solve()
+        point_solution = result.point_solution()
+        self.assert_that(result.status(), is_(GRB.OPTIMAL))
+        y_opt = [
+            1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        self.assert_that(point_solution.y_bar(), is_(y_opt))
+        
