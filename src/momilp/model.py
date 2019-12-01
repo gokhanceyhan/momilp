@@ -46,6 +46,10 @@ class AbstractModel(metaclass=abc.ABCMeta):
         """Returns the problem as a math model"""
 
     @abc.abstractmethod
+    def relaxed(self):
+        """Relaxes the integrality constraints and returns the relaxed model"""
+
+    @abc.abstractmethod
     def remove_constraint(self, constraint_names):
         """Removes the specified constraints from the model"""
 
@@ -62,10 +66,6 @@ class AbstractModel(metaclass=abc.ABCMeta):
         """Updates the model"""
 
     @abc.abstractmethod
-    def write(self, file_name):
-        """Writes the model"""
-
-    @abc.abstractmethod
     def X(self):
         """Returns the feasible set of the problem as a dict of constraint name to constraint"""
 
@@ -73,6 +73,10 @@ class AbstractModel(metaclass=abc.ABCMeta):
     def Z(self):
         """Returns the image of the feasible set of the problem in the criterion space as a dict of objective name to 
         objective var"""
+
+    @abc.abstractmethod
+    def write(self, file_name):
+        """Writes the model"""
 
 
 class GurobiMomilpModel(AbstractModel):
@@ -95,6 +99,7 @@ class GurobiMomilpModel(AbstractModel):
         self._objective_name_2_range = {}
         self._objective_name_2_scaler = {}
         self._objective_name_2_variable = {}
+        self._primary_objective_index = None
         self._region_defining_constraint_names = []
         self._tabu_constraint_names = []
         self._initialize()
@@ -187,9 +192,8 @@ class GurobiMomilpModel(AbstractModel):
             raise ValueError(message)
         self._num_obj = num_obj or model_num_obj
         objective_index_and_priorities = []
-        for obj_index in range(model.getAttr("NumObj")):
+        for obj_index in range(self._num_obj):
             model.setParam("ObjNumber", obj_index)
-            obj = model.getObjective()
             priority = model.getAttr("ObjNPriority")
             objective_index_and_priorities.append((obj_index, priority))
         unique_priority_values = set(priority for (_, priority) in objective_index_and_priorities)
@@ -199,10 +203,23 @@ class GurobiMomilpModel(AbstractModel):
         objective_index_and_priorities = sorted(objective_index_and_priorities, key=itemgetter(1), reverse=True)
         top_objective_index = objective_index_and_priorities[0][0]
         discrete_objective_indices = self._discrete_objective_indices
+        if not discrete_objective_indices:
+            # identify the list of objectives with integer variables only
+            for obj_index in range(self._num_obj):
+                obj = model.getObjective(index=obj_index)
+                obj_vars = [obj.getVar(term_idx) for term_idx in range(obj.size())]
+                all_integer = all([var.getAttr("VType") == "B" or var.getAttr("VType") == "I" for var in obj_vars])
+                if not all_integer:
+                    continue
+                discrete_objective_indices.append(obj_index)
+        if not discrete_objective_indices:
+            message = "At least one objective function must have discrete feasible set"
+            raise ValueError(message)
         if discrete_objective_indices and top_objective_index not in discrete_objective_indices:
-            message = "The highest priority objective '%s' is not in the set of specified discrete objectives '%s'" % (
+            message = "The highest priority objective '%s' is not in the set of discrete objectives '%s'" % (
                 top_objective_index, discrete_objective_indices)
             raise ValueError(message)
+        self._primary_objective_index = discrete_objective_indices[0]
     
     def add_constraint(self, lhs, name, rhs, sense, region_constraint=False, tabu_constraint=False):
         try:
@@ -247,15 +264,7 @@ class GurobiMomilpModel(AbstractModel):
         for y_, y_bar_ in zip(y, y_bar):
             y_.setAttr("LB", y_bar_)
             y_.setAttr("UB", y_bar_)
-
-    def y(self):
-        vars_ = self._model.getVars()
-        return [var for var in vars_ if var.getAttr("VType") == "B" or var.getAttr("VType") == "I"]
-
-    def model(self):
-        """Returns the model"""
-        return self._model
-
+    
     def num_int_vars(self):
         return self._model.getAttr("NumIntVars")
 
@@ -273,12 +282,19 @@ class GurobiMomilpModel(AbstractModel):
         """Returns the objective name to scaler"""
         return self._objective_name_2_scaler
 
+    def primary_objective_index(self):
+        """Returns the primary objective index"""
+        return self._primary_objective_index
+
     def problem(self):
         return self._model
 
     def region_defining_constraint_names(self):
         """Returns the region defining constraint names"""
         return self._region_defining_constraint_names
+
+    def relaxed(self):
+        return self._model.relax()
 
     def remove_constraint(self, constraint_names):
         constraint_names = constraint_names or []
@@ -300,12 +316,12 @@ class GurobiMomilpModel(AbstractModel):
             y_.setAttr("LB", self._int_var_2_original_lb_and_ub[y_][0])
             y_.setAttr("UB", self._int_var_2_original_lb_and_ub[y_][1])
 
+    def solve(self):
+        self._model.optimize()
+
     def tabu_constraint_names(self):
         """Returns the tabu constraint names"""
         return self._tabu_constraint_names
-
-    def solve(self):
-        self._model.optimize()
 
     def update_constraint(self, name):
         pass
@@ -313,14 +329,18 @@ class GurobiMomilpModel(AbstractModel):
     def update_model(self):
         self._model.update()
 
-    def write(self, file_name):
-        self._model.write(file_name)
-
     def X(self):
         return self._constraint_name_2_constraint
 
+    def y(self):
+        vars_ = self._model.getVars()
+        return [var for var in vars_ if var.getAttr("VType") == "B" or var.getAttr("VType") == "I"]
+
     def Z(self):
         return self._objective_name_2_variable
+
+    def write(self, file_name):
+        self._model.write(file_name)
 
 
 class ObjectiveRange:

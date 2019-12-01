@@ -104,7 +104,7 @@ class SearchProblem(Problem):
     def solve(self):
         momilp_model = self._momilp_model
         momilp_model.solve()
-        self._result = ModelQueryUtilities.query_optimal_solution(momilp_model.model())
+        self._result = ModelQueryUtilities.query_optimal_solution(momilp_model.problem())
         return self._result
 
     def update_model(
@@ -149,6 +149,24 @@ class SliceProblem(Problem):
     def __init__(self, momilp_model):
         super(SliceProblem, self).__init__(momilp_model)
         self._result = None
+        self._reduce()
+
+    def _reduce(self):
+        """Reduces the dimension of the momilp problem by dropping the primary objective function"""
+        model = self._momilp_model.problem()
+        primary_criterion_index = self._momilp_model.primary_criterion_index()
+        obj_indices = [i for i in range(0, model.getAttr("NumObj")) if i != primary_criterion_index]
+        obj_index_2_obj = {}
+        obj_index_2_obj_name = {}
+        for i in range(model.getAttr("NumObj")):
+            obj_index_2_obj[i] =  model.getObjective(i)
+            model.setParam("ObjNumber", i)
+            obj_index_2_obj_name[i] = model.getAttr("ObjNName")
+        filtered_objectives = [obj for i, obj in obj_index_2_obj.items() if i in obj_indices]
+        num_obj = len(obj_indices)
+        model.setAttr("NumObj", num_obj)
+        for i in range(num_obj):
+            model.setObjectiveN(filtered_objectives[i], i, name=obj_index_2_obj_name[i])
 
     def _validate_integer_vector(self, y_bar):
         """Validates the integer vector"""
@@ -165,7 +183,7 @@ class SliceProblem(Problem):
         return self._result
 
     def solve(self):
-        self._momilp_model.solve()
+        pass
 
     def update_model(self, keep_previous_region_constraints=False, region=None, y_bar=None):
         if y_bar:
