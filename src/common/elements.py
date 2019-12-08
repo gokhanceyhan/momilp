@@ -475,6 +475,14 @@ class SolutionSet:
         self._point_solutions.add(point_solution)
 
 
+class SolverPackage(Enum):
+
+    """Represents a solver package"""
+
+    CPLEX = "cplex"
+    GUROBI = "gurobi"
+
+
 class SolverStage(Enum):
 
     """Represents the solver stage"""

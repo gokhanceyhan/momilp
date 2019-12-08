@@ -1,15 +1,8 @@
 """Implements multi-objective linear programming solver factory"""
 
 from enum import Enum
-from src.molp.solver import BolpDichotomicSearchWithGurobiSolver
-
-
-class SolverPackage(Enum):
-
-    """Represents solver package"""
-
-    CPLEX = "cplex"
-    GUROBI = "gurobi"
+from src.common.elements import SolverPackage
+from src.molp.dichotomic_search.solver import BolpDichotomicSearchWithGurobiSolver
 
 
 class SolverType(Enum):
@@ -50,7 +43,6 @@ class MolpSolverFactory:
             raise ValueError(
                 MolpSolverFactory._UNSUPPORTED_SOLVER_TYPE_ERROR_MESSAGE % (
                     solver_type.value, [type_.value for type_ in MolpSolverFactory._SUPPORTED_SOLVER_TYPES]))
-        
         return BolpDichotomicSearchWithGurobiSolver(model)
 
 
