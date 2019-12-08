@@ -1,5 +1,6 @@
 """Checks the dominance of a set of points, and eliminates the dominated points"""
 
+
 class DominanceModel:
 
     """Implements model to check the dominance of a point or an edge"""

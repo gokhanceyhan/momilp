@@ -3,13 +3,15 @@
 import abc
 from enum import Enum
 
-class AbstractAlgorithm(with_metaclass=abc.ABCMeta):
+
+class AbstractAlgorithm(metaclass=abc.ABCMeta):
 
     """Implements abstract class for the algorithm"""
     
     @abc.abstractmethod
     def run(self):
         """Runs the algorithm"""
+
 
 class AlgorithmType(Enum):
 
@@ -28,6 +30,9 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
 
     def _initialize(self):
         """Initializes the algorithm"""
+
+    def run(self):
+        pass
 
 
 class Factory:
@@ -49,7 +54,7 @@ class Factory:
     @staticmethod
     def create(model, algorithm_type=AlgorithmType.CONE_BASED_SEARCH):
         """Creates algorithm"""
-        num_obj = model.num_obj()
+        num_obj = model.NumObj()
         if num_obj not in Factory._SUPPORTED_NUM_OBJECTIVES:
             error_message = Factory._UNSUPPORTED_NUM_OBJECTIVES_ERROR_MESSAGE.format(
                 num_obj=num_obj, supported_num_obj=Factory._SUPPORTED_NUM_OBJECTIVES)
