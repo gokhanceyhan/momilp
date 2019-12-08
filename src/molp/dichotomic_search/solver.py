@@ -6,11 +6,11 @@ Aneja, Yash P., and Kunhiraman PK Nair. "Bicriteria transportation problem." Man
 
 from collections import namedtuple
 import math
+from src.common.elements import PointInTwoDimension
 from src.molp.solver import MolpSolver
 from src.molp.utilities import ModelQueryUtilities
 
 
-Point = namedtuple("Point", ["z1", "z2"])
 PointPair = namedtuple("PointPair", ["point_with_higher_z1_value", "point_with_higher_z2_value"])
 
 
@@ -29,13 +29,14 @@ class BolpDichotomicSearchWithGurobiSolver(MolpSolver):
     def _calculate_objective_weights(self, point_with_higher_z1_value, point_with_higher_z2_value):
         """Calculates the objective weights to search a nondominated point between the given two points"""
         return {
-            0: point_with_higher_z2_value.z2 - point_with_higher_z1_value.z2,
-            1: point_with_higher_z1_value.z1 - point_with_higher_z2_value.z1}
+            0: point_with_higher_z2_value.z2() - point_with_higher_z1_value.z2(),
+            1: point_with_higher_z1_value.z1() - point_with_higher_z2_value.z1()}
         
     def _initialize(self):
         """Initializes the solver"""
         model = self._model
         # first (second) indexed point in the extreme supported points is the one with the highest z1 (z2) value
+        points = []
         for i in range(2):
             model.setParam("ObjNumber", 0)
             model.setAttr("ObjNPriority", 2 - i)
@@ -43,8 +44,13 @@ class BolpDichotomicSearchWithGurobiSolver(MolpSolver):
             model.setAttr("ObjNPriority", 1 + i)
             model.optimize()
             values = ModelQueryUtilities.query_optimal_objective_values(model)
-            self._extreme_supported_nondominated_points.append(Point(z1=values[0], z2=values[1]))
-        assert len(self._extreme_supported_nondominated_points) == 2, "failed to find the extreme nondominated points"
+            new_point = PointInTwoDimension(values)
+            if points and points[-1] == new_point:
+                continue
+            points.append(new_point)
+        self._extreme_supported_nondominated_points = points
+        if len(points) < 2:
+            return
         self._point_pairs_to_check.append(
             PointPair(
                 point_with_higher_z1_value=self._extreme_supported_nondominated_points[0], 
@@ -52,8 +58,8 @@ class BolpDichotomicSearchWithGurobiSolver(MolpSolver):
 
     def _isclose(self, point_a, point_b, rel_tol=1e-6):
         """Returns True if two points are close in their values, False otherwise"""
-        return math.isclose(point_a.z1, point_b.z1, rel_tol=rel_tol) and \
-            math.isclose(point_a.z2, point_b.z2, rel_tol=rel_tol)
+        return math.isclose(point_a.z1(), point_b.z1(), rel_tol=rel_tol) and \
+            math.isclose(point_a.z2(), point_b.z2(), rel_tol=rel_tol)
 
     def _modify_model_objectives(self, equal_priority=False, obj_index_2_weight=None):
         """Modify the model objectives"""
@@ -104,7 +110,7 @@ class BolpDichotomicSearchWithGurobiSolver(MolpSolver):
             self._modify_model_objectives(equal_priority=True, obj_index_2_weight=obj_index_2_weight)
             model.optimize()
             values = ModelQueryUtilities.query_optimal_objective_values(model)
-            point = Point(z1=values[0], z2=values[1])
+            point = PointInTwoDimension(values)
             if self._isclose(point, point_with_higher_z1_value) or self._isclose(point, point_with_higher_z2_value):
                 continue
             self._extreme_supported_nondominated_points.append(point)
@@ -114,4 +120,4 @@ class BolpDichotomicSearchWithGurobiSolver(MolpSolver):
                 PointPair(point_with_higher_z1_value=point, point_with_higher_z2_value=point_with_higher_z2_value))
         # sort the nondominated points in non-decreasing order of z1 values
         self._extreme_supported_nondominated_points = BolpDichotomicSearchWithGurobiSolver._sort_points(
-            self._extreme_supported_nondominated_points, lambda x: x.z1)
+            self._extreme_supported_nondominated_points, lambda x: x.z1())

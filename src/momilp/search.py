@@ -3,7 +3,9 @@
 import abc
 from enum import Enum
 from gurobipy import Var
-from src.momilp.elements import SearchRegionInTwoDimension
+from src.common.elements import EdgeInTwoDimension, FrontierInTwoDimension, FrontierSolution, PointInTwoDimension, \
+    SearchRegionInTwoDimension, SliceProblemResult
+from src.molp.dichotomic_search.solver import BolpDichotomicSearchWithGurobiSolver
 from src.momilp.utilities import ConstraintGenerationUtilities, ModelQueryUtilities
 
 
@@ -148,25 +150,40 @@ class SliceProblem(Problem):
 
     def __init__(self, momilp_model):
         super(SliceProblem, self).__init__(momilp_model)
+        self._primary_objective_value = None
         self._result = None
-        self._reduce()
+        self._y_bar = None
+        self._initialize()
 
-    def _reduce(self):
+    def _initialize(self):
+        """Initializes the slice problem"""
+        self._reduce_dimension()
+        self._relax_integrality()
+
+    def _reduce_dimension(self):
         """Reduces the dimension of the momilp problem by dropping the primary objective function"""
         model = self._momilp_model.problem()
-        primary_criterion_index = self._momilp_model.primary_criterion_index()
-        obj_indices = [i for i in range(0, model.getAttr("NumObj")) if i != primary_criterion_index]
+        primary_objective_index = self._momilp_model.primary_objective_index()
+        filtered_obj_indices = [i for i in range(0, model.getAttr("NumObj")) if i != primary_objective_index]
         obj_index_2_obj = {}
         obj_index_2_obj_name = {}
         for i in range(model.getAttr("NumObj")):
             obj_index_2_obj[i] =  model.getObjective(i)
             model.setParam("ObjNumber", i)
             obj_index_2_obj_name[i] = model.getAttr("ObjNName")
-        filtered_objectives = [obj for i, obj in obj_index_2_obj.items() if i in obj_indices]
-        num_obj = len(obj_indices)
+        # first remove the objective equation of the primary object from the constraints
+        self._momilp_model.remove_constraint(obj_index_2_obj_name[primary_objective_index])
+        # update the objectives
+        num_obj = len(filtered_obj_indices)
         model.setAttr("NumObj", num_obj)
-        for i in range(num_obj):
-            model.setObjectiveN(filtered_objectives[i], i, name=obj_index_2_obj_name[i])
+        for new_obj_index, old_obj_index in enumerate(filtered_obj_indices):
+            model.setObjectiveN(
+                obj_index_2_obj[old_obj_index], new_obj_index, name=obj_index_2_obj_name[old_obj_index])
+        model.update()
+
+    def _relax_integrality(self):
+        """Relaxes the integrality constraints in the model"""
+        self._momilp_model.relax()
 
     def _validate_integer_vector(self, y_bar):
         """Validates the integer vector"""
@@ -175,7 +192,7 @@ class SliceProblem(Problem):
             assert all([isinstance(y_bar_, int) for y_bar_ in y_bar])
             assert len(y_bar) == len(y)
             assert all([y_.getAttr("LB") <= y_bar_ <= y_.getAttr("UB") for y_, y_bar_ in zip(y, y_bar)])
-        except AssertionError as error:
+        except BaseException as error:
             message = SliceProblem._INVALID_INTEGER_VECTOR_ERROR_MESSAGE % (y, str(y_bar))
             raise RuntimeError(message) from error
     
@@ -183,12 +200,27 @@ class SliceProblem(Problem):
         return self._result
 
     def solve(self):
-        pass
+        model = self._momilp_model.problem()
+        solver = BolpDichotomicSearchWithGurobiSolver(model)
+        solver.solve()
+        points = solver.extreme_supported_nondominated_points()
+        if len(points) == 1:
+            frontier_solution = FrontierSolution(FrontierInTwoDimension(point=points[0]), self._y_bar)
+        else:
+            edges = []
+            for index, point in enumerate(points):
+                if len(points) > index + 1:
+                    edges.append(
+                        EdgeInTwoDimension(
+                            left_point=point, right_point=points[index + 1], z3=self._primary_objective_value))
+            frontier_solution = FrontierSolution(FrontierInTwoDimension(edges=edges), self._y_bar)
+        self._result = SliceProblemResult(frontier_solution)
 
-    def update_model(self, keep_previous_region_constraints=False, region=None, y_bar=None):
-        if y_bar:
-            self._validate_integer_vector(y_bar)
-            self._momilp_model.fix_integer_vector(y_bar)
+    def update_model(self, y_bar, keep_previous_region_constraints=False, primary_objective_value=0, region=None):
+        self._primary_objective_value = primary_objective_value
+        self._y_bar = y_bar
+        self._validate_integer_vector(y_bar)
+        self._momilp_model.fix_integer_vector(y_bar)
         if not keep_previous_region_constraints:
             self._remove_region_defining_constraints()
         if region:

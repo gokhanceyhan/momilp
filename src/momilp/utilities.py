@@ -2,7 +2,7 @@
 
 from gurobipy import Constr, GRB, LinExpr
 import math
-from src.momilp.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension, LowerBoundInTwoDimension, \
+from src.common.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension, LowerBoundInTwoDimension, \
     Point, PointSolution, SearchProblemResult
 
 

@@ -3,7 +3,7 @@
 from gurobipy import GRB, Model
 from hamcrest import assert_that, has_length, is_
 import os
-from src.momilp.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension, LowerBoundInTwoDimension, \
+from src.common.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension, LowerBoundInTwoDimension, \
     PointInTwoDimension, RayInTwoDimension
 from src.momilp.model import GurobiMomilpModel
 from src.momilp.utilities import ConstraintGenerationUtilities
@@ -32,13 +32,13 @@ class ConstraintGenerationUtilitiesTest(TestCase):
         self.assert_that(constraints, has_length(2))
         constraint = constraints[0]
         self.assert_that(round(constraint.rhs, 2), is_(0.0))
-        self.assert_that(round(momilp_model.model().getCoeff(constraint, x_var), 2), is_(1.00))
-        self.assert_that(round(momilp_model.model().getCoeff(constraint, y_var), 2), is_(-1.00))
+        self.assert_that(round(momilp_model.problem().getCoeff(constraint, x_var), 2), is_(1.00))
+        self.assert_that(round(momilp_model.problem().getCoeff(constraint, y_var), 2), is_(-1.00))
         self.assert_that(constraint.sense, is_(GRB.GREATER_EQUAL))
         constraint = constraints[1]
         self.assert_that(round(constraint.rhs, 2), is_(0.0))
-        self.assert_that(round(momilp_model.model().getCoeff(constraint, x_var), 2), is_(0.75))
-        self.assert_that(round(momilp_model.model().getCoeff(constraint, y_var), 2), is_(-1.00))
+        self.assert_that(round(momilp_model.problem().getCoeff(constraint, x_var), 2), is_(0.75))
+        self.assert_that(round(momilp_model.problem().getCoeff(constraint, y_var), 2), is_(-1.00))
         self.assert_that(constraint.sense, is_(GRB.LESS_EQUAL))
         # test the convex cone 'R_{>=0}'
         cone = ConvexConeInPositiveQuadrant([RayInTwoDimension(0, origin), RayInTwoDimension(90, origin)])
@@ -60,8 +60,8 @@ class ConstraintGenerationUtilitiesTest(TestCase):
         momilp_model.update_model()
         self.assert_that(constraint)
         self.assert_that(round(constraint.rhs, 2), is_(10.35))
-        self.assert_that(round(momilp_model.model().getCoeff(constraint, x_var), 2), is_(0.72))
-        self.assert_that(round(momilp_model.model().getCoeff(constraint, y_var), 2), is_(1.00))
+        self.assert_that(round(momilp_model.problem().getCoeff(constraint, x_var), 2), is_(0.72))
+        self.assert_that(round(momilp_model.problem().getCoeff(constraint, y_var), 2), is_(1.00))
         # test an edge with infinite slope
         edge = EdgeInTwoDimension(PointInTwoDimension([6, 6]), PointInTwoDimension([6, 3]))
         constraint = ConstraintGenerationUtilities.create_constraint_for_edge_in_two_dimension(
@@ -69,8 +69,8 @@ class ConstraintGenerationUtilitiesTest(TestCase):
         momilp_model.update_model()
         self.assert_that(constraint)
         self.assert_that(round(constraint.rhs, 2), is_(6.00))
-        self.assert_that(round(momilp_model.model().getCoeff(constraint, x_var), 2), is_(1.00))
-        self.assert_that(round(momilp_model.model().getCoeff(constraint, y_var), 2), is_(0.00))
+        self.assert_that(round(momilp_model.problem().getCoeff(constraint, x_var), 2), is_(1.00))
+        self.assert_that(round(momilp_model.problem().getCoeff(constraint, y_var), 2), is_(0.00))
         
     def test_create_constraints_for_lower_bound(self):
         """Tests the constraint creation for a lower bound vector in two dimension"""

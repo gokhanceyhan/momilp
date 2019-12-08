@@ -3,7 +3,8 @@
 from gurobipy import read
 from hamcrest import assert_that, has_length, is_
 import os
-from src.molp.dichotomic_search.solver import BolpDichotomicSearchWithGurobiSolver, Point
+from src.common.elements import PointInTwoDimension
+from src.molp.dichotomic_search.solver import BolpDichotomicSearchWithGurobiSolver
 from unittest import TestCase
 
 
@@ -25,6 +26,6 @@ class BolpDichotomicSearchTest(TestCase):
         self.assert_that(extreme_supported_nondominated_points, has_length(6))
         self.assert_that(solver._point_pairs_to_check, has_length(0))
         first_point = extreme_supported_nondominated_points[0]
-        self.assert_that(first_point, is_(Point(z1=81, z2=96)))
+        self.assert_that(first_point, is_(PointInTwoDimension([81, 96])))
         last_point = extreme_supported_nondominated_points[-1]
-        self.assert_that(last_point, is_(Point(z1=120, z2=17)))
+        self.assert_that(last_point, is_(PointInTwoDimension([120, 17])))

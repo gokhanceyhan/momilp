@@ -161,6 +161,14 @@ class FrontierInTwoDimension:
                     index > 0 and not edge.left_point() != edges[index-1].right_point():
                 raise ValueError(FrontierInTwoDimension._DISCONNECTED_EDGES_ERROR_MESSAGE)
 
+    def edges(self):
+        """Returns the edges in the frontier"""
+        return self._edges
+
+    def point(self):
+        """Returns the point in the frontier"""
+        return self._point
+
 
 class FrontierEdgeInTwoDimension(EdgeInTwoDimension):
 
@@ -183,6 +191,10 @@ class FrontierSolution(Solution):
     def frontier(self):
         """Returns the frontier"""
         return self._frontier
+
+    def y_bar(self):
+        """Returns the integer vector"""
+        return self._y_bar
 
 
 class LowerBound:
@@ -225,6 +237,11 @@ class LowerBoundInTwoDimension(LowerBound):
 class Point:
 
     """Implements point in the space of the momilp problem"""
+
+    def __eq__(self, other):
+        if isinstance(other, Point):
+            return self._values == other.values()
+        return False
 
     def __init__(self, values):
         self._values = values
@@ -428,7 +445,7 @@ class SliceProblemResult:
 
     """Implements slice problem result"""
 
-    def __init__(self, frontier_solution, status):
+    def __init__(self, frontier_solution, status=None):
         self._frontier_solution = frontier_solution
         self._status = status
 

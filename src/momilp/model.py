@@ -3,7 +3,7 @@
 import abc
 from gurobipy import GRB, LinExpr, Model, QuadExpr, read
 from operator import itemgetter
-from src.momilp.elements import SolverStage
+from src.common.elements import SolverStage
 from src.momilp.utilities import ModelQueryUtilities
 
 
@@ -16,16 +16,12 @@ class AbstractModel(metaclass=abc.ABCMeta):
         """Adds constraint to the problem and return the created constraint object"""
 
     @abc.abstractmethod
-    def copy(self):
-        """Creates and returns a deep copy of the model"""
+    def copy_problem(self):
+        """Creates and returns a deep copy of the problem"""
 
     @abc.abstractmethod
     def fix_integer_vector(self, y_bar):
         """Creates the constraint of 'y = y_bar'"""
-
-    @abc.abstractmethod
-    def y(self):
-        """Returns the integer decision variables in the problem"""
 
     @abc.abstractmethod
     def num_int_vars(self):
@@ -46,8 +42,8 @@ class AbstractModel(metaclass=abc.ABCMeta):
         """Returns the problem as a math model"""
 
     @abc.abstractmethod
-    def relaxed(self):
-        """Relaxes the integrality constraints and returns the relaxed model"""
+    def relax(self):
+        """Removes the integrality constraints from the model"""
 
     @abc.abstractmethod
     def remove_constraint(self, constraint_names):
@@ -70,6 +66,10 @@ class AbstractModel(metaclass=abc.ABCMeta):
         """Returns the feasible set of the problem as a dict of constraint name to constraint"""
 
     @abc.abstractmethod
+    def y(self):
+        """Returns the integer decision variables in the problem"""
+
+    @abc.abstractmethod
     def Z(self):
         """Returns the image of the feasible set of the problem in the criterion space as a dict of objective name to 
         objective var"""
@@ -88,20 +88,22 @@ class GurobiMomilpModel(AbstractModel):
     def __init__(
             self, discrete_objective_indices=None, file_name=None, gurobi_model=None, log_to_console=False, 
             log_to_file=True, num_obj=None, scale=True):
+        self._constraint_name_2_constraint = {}
         self._discrete_objective_indices = discrete_objective_indices or []
+        self._int_var_2_original_lb_and_ub = {}
+        assert file_name or gurobi_model, "either file name or gurobi model must be given"
         self._model = gurobi_model or read(file_name)
         self._num_obj = num_obj
-        self._set_params(
-            log_to_console=log_to_console, log_to_file=log_to_file, model_name=GurobiMomilpModel._MODEL_NAME)
-        self._validate()
-        self._constraint_name_2_constraint = {}
-        self._int_var_2_original_lb_and_ub = {}
         self._objective_name_2_range = {}
         self._objective_name_2_scaler = {}
         self._objective_name_2_variable = {}
         self._primary_objective_index = None
         self._region_defining_constraint_names = []
         self._tabu_constraint_names = []
+        self._y = []
+        self._set_params(
+            log_to_console=log_to_console, log_to_file=log_to_file, model_name=GurobiMomilpModel._MODEL_NAME)
+        self._validate()
         self._initialize()
         if scale:
             self._scale_model()
@@ -120,8 +122,11 @@ class GurobiMomilpModel(AbstractModel):
             self.add_constraint(
                 obj - obj_var if model.getAttr("ModelSense") == GRB.MAXIMIZE else obj + obj_var, name, 0.0, GRB.EQUAL)
             self._objective_name_2_variable[name] = obj_var
+        # store the integer variable vector
+        vars_ = self._model.getVars()
+        self._y = [var for var in vars_ if var.getAttr("VType") == "B" or var.getAttr("VType") == "I"]
         # save the original bounds of the integer variables
-        self._int_var_2_original_lb_and_ub = {var: (var.LB, var.UB) for var in self.y()}
+        self._int_var_2_original_lb_and_ub = {var: (var.LB, var.UB) for var in self._y}
         model.update()
 
     def _scale_model(self):
@@ -239,7 +244,7 @@ class GurobiMomilpModel(AbstractModel):
 
     def binary(self):
         """Returns True if this is a binary-integer model, False otherwise."""
-        y = self.y()
+        y = self._y
         for y_ in y:
             if y_.LB < 0 or y_.UB > 1:
                 return False
@@ -256,11 +261,11 @@ class GurobiMomilpModel(AbstractModel):
         """Returns the constraint name to constraint"""
         return self._constraint_name_2_constraint
     
-    def copy(self):
+    def copy_problem(self):
         return self._model.copy()
 
     def fix_integer_vector(self, y_bar):
-        y = self.y()
+        y = self._y
         for y_, y_bar_ in zip(y, y_bar):
             y_.setAttr("LB", y_bar_)
             y_.setAttr("UB", y_bar_)
@@ -293,11 +298,13 @@ class GurobiMomilpModel(AbstractModel):
         """Returns the region defining constraint names"""
         return self._region_defining_constraint_names
 
-    def relaxed(self):
-        return self._model.relax()
+    def relax(self):
+        # NOTE: I do not use 'model.relax()' here as it removes the references to the y-vector
+        for y_ in self._y:
+            y_.setAttr("VType", "C")
 
     def remove_constraint(self, constraint_names):
-        constraint_names = constraint_names or []
+        constraint_names = constraint_names if isinstance(constraint_names, list) else [constraint_names]
         model = self._model
         constraints_to_remove = [
             self._constraint_name_2_constraint[constraint_name] for constraint_name in constraint_names]
@@ -311,7 +318,7 @@ class GurobiMomilpModel(AbstractModel):
 
     def restore_original_bounds_of_integer_variables(self):
         """Removes the posteriori-added bounds on the y-vector if there exist any"""
-        y = self.y()
+        y = self._y
         for y_ in y:
             y_.setAttr("LB", self._int_var_2_original_lb_and_ub[y_][0])
             y_.setAttr("UB", self._int_var_2_original_lb_and_ub[y_][1])
@@ -333,8 +340,7 @@ class GurobiMomilpModel(AbstractModel):
         return self._constraint_name_2_constraint
 
     def y(self):
-        vars_ = self._model.getVars()
-        return [var for var in vars_ if var.getAttr("VType") == "B" or var.getAttr("VType") == "I"]
+        return self._y
 
     def Z(self):
         return self._objective_name_2_variable
