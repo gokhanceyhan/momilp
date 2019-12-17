@@ -118,76 +118,94 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         solution_state = SolutionState()
         self._state = State(search_space, slice_problem, solution_state=solution_state)
 
+    def _select_search_problem_and_index(self, search_problems):
+        """Selects the search problem, returns with index"""
+        selected_search_problem_and_index = None
+        for search_problem, index in enumerate(search_problems):
+            if not selected_search_problem_and_index:
+                selected_search_problem_and_index = (search_problem, index)
+            else:
+                selected_search_problem = operator.itemgetter(selected_search_problem_and_index, 0)
+                selected_point = selected_search_problem.result().point_solution().point()
+                candiate_point = search_problem.result().point_solution().point()
+                if PointComparisonUtilities.compare_to(
+                        selected_point, candiate_point, self._objective_index_2_priority) < 0:
+                    selected_search_problem_and_index = (search_problem, index)
+        return selected_search_problem_and_index
+
+    def _solve_search_problems(self, iteration_index, search_problems):
+        """Solves and returns the search problems"""
+        for search_problem in search_problems:
+            if search_problem.result():
+                continue
+            try:
+                search_problem.solve()
+            except BaseException as e:
+                self._errors.append(
+                    "the problem '%s' failed with error '%s' in iteration '%s'" % (
+                        id(search_problem), e, iteration_index))
+                search_problem.momilp_model().write(os.path.join(self._working_dir, id(search_problem) + ".lp"))     
+        search_problems[:] = [
+            p for p in search_problems if p.result().status() in 
+            [OptimizationStatus.OPTIMAL, OptimizationStatus.FEASIBLE]]
+        return search_problems
+
+    def _solve_slice_problem(self, selected_point_solution, region, iteration_index):
+        """Solves the slice problem and returns the result"""
+        slice_problem = self._state.slice_problem()
+        slice_problem.update_model(
+            selected_point_solution.y_bar(), 
+            primary_objective_value=selected_point_solution.point().values()[self._primary_objective_index], 
+            region=region)
+        try:
+            return slice_problem.solve()
+        except BaseException as e:
+            raise RuntimeError(
+                "failed to solve the slice problem for integer vector '%s' in iteration '%s'") % (
+                    selected_point_solution.y_bar(), iteration_index) from e
+
+    def _update_state(self, selected_point_solution, frontier, iteration_index):
+        """Updates the state"""
+        state = self._state
+        if iteration_index > 0:
+            previous_selected_point_solution = state.iterations()[iteration_index - 1].selected_point_solution()
+            if selected_point_solution.point().values()[self._primary_objective_index] < \
+                    previous_selected_point_solution.point().values()[self._primary_objective_index]:
+                state.solution_state().move_weakly_nondominated_to_nondominated()
+            else:
+                state.solution_state().filter_dominated_points_and_edges(frontier)
+        if frontier.singleton():
+            state.solution_state().add_nondominated_point(selected_point_solution)
+        else:
+            edges = frontier.edges()
+            for edge in edges:
+                state.solution_state().add_weakly_nondominated_edge(EdgeSolution(edge, selected_point_solution.y_bar()))
+
     def run(self):
         state = self._state
         search_space = state.search_space()
         search_problems = search_space.search_problems()
-        slice_problem = state.slice_problem()
         iteration_index = 0
         while search_problems:
             # search all of the regions and remove the infeasible ones
-            for search_problem in search_problems:
-                if search_problem.result():
-                    continue
-                try:
-                    search_problem.solve()
-                except BaseException as e:
-                    self._errors.append(
-                        "the problem '%s' failed with error '%s' in iteration '%s'" % (
-                            id(search_problem), e, iteration_index))
-                    search_problem.momilp_model().write(os.path.join(self._working_dir, id(search_problem) + ".lp"))     
-            search_problems[:] = [
-                p for p in search_problems if p.result().status() in 
-                [OptimizationStatus.OPTIMAL, OptimizationStatus.FEASIBLE]]
+            search_problems = self._solve_search_problems(iteration_index, search_problems)
             if not search_problems:
                 state.solution_state().move_weakly_nondominated_to_nondominated()
                 break
-            selected_search_problem_and_index = None
-            for search_problem, index in enumerate(search_problems):
-                if not selected_search_problem_and_index:
-                    selected_search_problem_and_index = (search_problem, index)
-                else:
-                    selected_search_problem = operator.itemgetter(selected_search_problem_and_index, 0)
-                    selected_point = selected_search_problem.result().point_solution().point()
-                    candiate_point = search_problem.result().point_solution().point()
-                    if PointComparisonUtilities.compare_to(
-                            selected_point, candiate_point, self._objective_index_2_priority) < 0:
-                        selected_search_problem_and_index = (search_problem, index)
-            
-            # select the next efficient integer vector, solve the slice problem and update the search space
-            selected_search_problem = operator.itemgetter(selected_search_problem_and_index, 0)
-            selected_search_problem_index = operator.itemgetter(selected_search_problem_and_index, 1)
+            # select the next efficient integer vector and solve the slice problem
+            selected_search_problem_and_index = self._select_search_problem_and_index(search_problems)
+            selected_search_problem = selected_search_problem_and_index[0]
+            selected_search_problem_index = selected_search_problem_and_index[1]
             selected_point_solution = selected_search_problem.result().point_solution()
-            slice_problem.update_model(
-                selected_point_solution.y_bar(), 
-                primary_objective_value=selected_point_solution.point().values()[self._primary_objective_index], 
-                region=selected_search_problem.region())
-            try:
-                slice_problem_result = slice_problem.solve()
-            except BaseException as e:
-                raise RuntimeError(
-                    "failed to solve the slice problem for integer vector '%s' in iteration '%s'") % (
-                        selected_point_solution.y_bar(), iteration_index) from e
-            search_space.update_lower_bounds(
-                slice_problem_result.frontier_solution().ideal_point(), selected_search_problem_index)
-
-            # update the state
-            if iteration_index > 0:
-                previous_selected_point_solution = state.iterations()[iteration_index - 1].selected_point_solution()
-                if selected_point_solution.point().values()[self._primary_objective_index] < \
-                        previous_selected_point_solution.point().values()[self._primary_objective_index]:
-                    state.solution_state().move_weakly_nondominated_to_nondominated()
-                else:
-                    state.solution_state().filter_dominated_points_and_edges(slice_problem_result.frontier_solution())
+            slice_problem_result = self._solve_slice_problem(
+                selected_point_solution, selected_search_problem.region(), iteration_index)
             frontier = slice_problem_result.frontier_solution().frontier()
             y_bar = slice_problem_result.frontier_solution().y_bar()
-            if frontier.singleton():
-                state.solution_state().add_nondominated_point(selected_point_solution)
-            else:
-                edges = frontier.edges()
-                for edge in edges:
-                    state.solution_state().add_weakly_nondominated_edge(EdgeSolution(edge, y_bar))
-            
+            # update the search space
+            search_space.update_lower_bounds(
+                slice_problem_result.frontier_solution().ideal_point(), selected_search_problem_index)
+            # update the state
+            self._update_state(selected_point_solution, frontier, iteration_index)
             # partition the selected search region
             selected_region = selected_search_problem.region()
             child_search_regions = SearchUtilities.partition_search_region_in_two_dimension(frontier, selected_region)
@@ -196,4 +214,3 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
                 search_problem.update_model(region=region, tabu_y_bars=[y_bar], keep_previous_tabu_constraints=True)
                 search_space.add_search_problem(search_problem)
             search_space.delete_search_problem(selected_search_problem_index)
-            

@@ -47,8 +47,8 @@ class SolutionState:
         """Adds the edge solution to the weakly nondominated edges"""
         self._weakly_nondominated_edges.append(edge_solution)
 
-    def filter_dominated_points_and_edges(self, frontier_solution):
-        """Filters the dominated points and edges from the wekly dominated points and edges"""
+    def filter_dominated_points_and_edges(self, frontier):
+        """Filters the dominated points and edges from the weakly dominated points and edges"""
         pass
 
     def move_weakly_nondominated_to_nondominated(self):
