@@ -6,7 +6,38 @@ class DominanceModel:
     """Implements model to check the dominance of a point or an edge"""
 
 
-class DominanceFilter:
+class DominanceRules:
+
+    """Implements rules to identify the dominance relations between two sets of points, edges or frontiers"""
+
+    class EdgeToPoint:
+
+        """Implements the rules when comparing an edge to a point"""
+
+    class FrontierToPoint:
+
+        """Implements the rules when comparing a frontier to a point"""
+    
+    class PointToPoint:
+
+        """Implements the rules when comparing a point to another point"""
+
+        @staticmethod
+        def dominated(this, that):
+            """Returns True if 'this' point is dominated by 'that' point"""
+            assert len(this.values()) == len(that.values())
+            return all([v <= that.values()[i] for i, v in enumerate(this.values())])
+
+    class PointToEdge:
+
+        """Implements the rules when comparing a point to an edge"""
+
+    class PointToFrontier:
+
+        """Implements the rules when comparing a point to frontier"""
+
+
+class ModelBasedDominanceFilter:
 
     """Filters the points that are relatively nondominated with respect to the points or edges checked against"""
 
@@ -32,28 +63,3 @@ class DominanceFilter:
     def filter_point(self, y, point, compared_edges=None, compared_points=None):
         """Returns the point if it is not dominated, otherwise None"""
         pass
-
-
-class DominanceRuleFactory:
-
-    """Implements rules to identify the dominance relations between two sets of points"""
-
-    class EdgeToPoint:
-
-        """Implements the rules when comparing an edge to a point"""
-
-    class FrontierToPoint:
-
-        """Implements the rules when comparing a frontier to a point"""
-    
-    class PointToPoint:
-
-        """Implements the rules when comparing a point to another point"""
-
-    class PointToEdge:
-
-        """Implements the rules when comparing a point to an edge"""
-
-    class PointToFrontier:
-
-        """Implements the rules when comparing a point to frontier"""

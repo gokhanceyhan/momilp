@@ -1,6 +1,7 @@
 """Implements the momilp model"""
 
 import abc
+import copy
 from gurobipy import GRB, LinExpr, Model, QuadExpr, read
 from operator import itemgetter
 from src.common.elements import SolverStage
@@ -16,8 +17,8 @@ class AbstractModel(metaclass=abc.ABCMeta):
         """Adds constraint to the problem and return the created constraint object"""
 
     @abc.abstractmethod
-    def copy_problem(self):
-        """Creates and returns a deep copy of the problem"""
+    def copy(self):
+        """Creates and returns a deep copy of the object"""
 
     @abc.abstractmethod
     def fix_integer_vector(self, y_bar):
@@ -94,6 +95,7 @@ class GurobiMomilpModel(AbstractModel):
         assert file_name or gurobi_model, "either file name or gurobi model must be given"
         self._model = gurobi_model or read(file_name)
         self._num_obj = num_obj
+        self._objective_index_2_priority = {}
         self._objective_name_2_range = {}
         self._objective_name_2_scaler = {}
         self._objective_name_2_variable = {}
@@ -148,12 +150,14 @@ class GurobiMomilpModel(AbstractModel):
             model.setAttr("ModelSense", -1)
             model.optimize()
             max_point_sol = ModelQueryUtilities.query_optimal_solution(
-                model, SolverStage.MODEL_SCALING).point_solution()
+                model, raise_error_if_infeasible=True, 
+                solver_stage=SolverStage.MODEL_SCALING).point_solution()
             # minimize
             model.setAttr("ModelSense", 1)
             model.optimize()
             min_point_sol = ModelQueryUtilities.query_optimal_solution(
-                model, SolverStage.MODEL_SCALING).point_solution()
+                model, raise_error_if_infeasible=True, 
+                solver_stage=SolverStage.MODEL_SCALING).point_solution()
             obj_name = model.getAttr("ObjNName")
             self._objective_name_2_range[obj_name] = ObjectiveRange(max_point_sol, min_point_sol)
             
@@ -201,6 +205,7 @@ class GurobiMomilpModel(AbstractModel):
             model.setParam("ObjNumber", obj_index)
             priority = model.getAttr("ObjNPriority")
             objective_index_and_priorities.append((obj_index, priority))
+            self._objective_index_2_priority[obj_index] = priority
         unique_priority_values = set(priority for (_, priority) in objective_index_and_priorities)
         if len(unique_priority_values) < model_num_obj:
             message = "The model objective functions must have different priorities, '%s" % unique_priority_values
@@ -261,8 +266,8 @@ class GurobiMomilpModel(AbstractModel):
         """Returns the constraint name to constraint"""
         return self._constraint_name_2_constraint
     
-    def copy_problem(self):
-        return self._model.copy()
+    def copy(self):
+        return copy.deepcopy(self)
 
     def fix_integer_vector(self, y_bar):
         y = self._y
@@ -278,6 +283,10 @@ class GurobiMomilpModel(AbstractModel):
 
     def objective(self, index):
         return self._model.getObjective(index=index)
+
+    def objective_index_2_priority(self):
+        """Returns the dictionary of objective index to priority"""
+        return self._objective_index_2_priority
 
     def objective_name_2_range(self):
         """Returns the objective name to objective range"""

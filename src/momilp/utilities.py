@@ -1,9 +1,11 @@
-"""Implements utilities for the momilp solver"""
+"""Implements the utilities for the momilp solver"""
 
 from gurobipy import Constr, GRB, LinExpr
 import math
-from src.common.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension, LowerBoundInTwoDimension, \
-    Point, PointSolution, SearchProblemResult
+import operator
+from src.common.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension, FrontierInTwoDimension, \
+    LowerBoundInTwoDimension, OptimizationStatus, Point, PointInTwoDimension, PointSolution, RayInTwoDimension, \
+    SearchProblemResult, SearchRegionInTwoDimension
 
 
 class ConstraintGenerationUtilities:
@@ -93,19 +95,109 @@ class ModelQueryUtilities:
 
     """Implements model query utilities"""
 
+    GUROBI_STATUS_2_OPTIMIZATION_STATUS = {
+        GRB.INF_OR_UNBD: OptimizationStatus.UNDEFINED,
+        GRB.INFEASIBLE: OptimizationStatus.INFEASIBLE,
+        GRB.UNBOUNDED: OptimizationStatus.UNDEFINED,
+        GRB.OPTIMAL: OptimizationStatus.OPTIMAL,
+        GRB.ITERATION_LIMIT: OptimizationStatus.FEASIBLE,
+        GRB.NODE_LIMIT: OptimizationStatus.FEASIBLE,
+        GRB.SOLUTION_LIMIT: OptimizationStatus.FEASIBLE,
+        GRB.TIME_LIMIT: OptimizationStatus.FEASIBLE
+    }
+
     @staticmethod
-    def query_optimal_solution(model, solver_stage=None):
+    def query_optimal_solution(model, raise_error_if_infeasible=False, solver_stage=None):
         """Queries the model for a feasible solution, and returns the best feasible solution if there exists any"""
-        status = model.getAttr("Status")
-        if status in [GRB.INF_OR_UNBD, GRB.INFEASIBLE, GRB.UNBOUNDED]:
-            message = "the optimization call for the '%s' model ended with the '%s' status" % (
-                    model.getAttr("ModelName"), status.value)
-            if solver_stage:
-                message = " ".join([message, "in the '%s' stage" % solver_stage])
-            raise RuntimeError(message)
+        status = ModelQueryUtilities.GUROBI_STATUS_2_OPTIMIZATION_STATUS.get(
+            model.getAttr("Status"), OptimizationStatus.UNDEFINED)
+        error_message = "the optimization call for the '%s' model ended with the '%s' status" % (
+            model.getAttr("ModelName"), status.value)
+        if solver_stage:
+            error_message = " ".join([error_message, "in the '%s' stage" % solver_stage])
+        point_solution = None
+        if status == OptimizationStatus.UNDEFINED:
+            raise RuntimeError(error_message)
+        if status == OptimizationStatus.INFEASIBLE:
+            if raise_error_if_infeasible:
+                raise RuntimeError(error_message)
+            return SearchProblemResult(point_solution, status)
         values = []
         for obj_index in range(model.getAttr("NumObj")):
             obj = model.getObjective(index=obj_index)
             values.append(obj.getValue())
         y_bar = [var.x for var in model.getVars() if var.getAttr("VType") == "B" or var.getAttr("VType") == "I"]
         return SearchProblemResult(PointSolution(Point(values), y_bar), status)
+
+
+class PointComparisonUtilities:
+
+    """Implements point comparison utilities"""
+
+    @staticmethod
+    def compare_to(base_point, compared_point, value_index_2_priority):
+        """Compares the points in lexicographic order specified by value index to priority dictionary
+        
+        Returns 0, if both points have equal values, 1 if base point is lexicographically greater than the compared 
+        point, else -1"""
+        assert len(base_point.values()) == len(compared_point.values())
+        indicies_in_lexicographic_order = [
+            operator.itemgetter(0) for item in sorted(value_index_2_priority.items(), key=operator.itemgetter(1), 
+            reverse=True)]
+        for index in indicies_in_lexicographic_order:
+            if base_point.values()[index] > compared_point.values()[index]:
+                return 1
+            if base_point.values()[index] < compared_point.values()[index]:
+                return -1
+        return 0
+
+
+class SearchUtilities:
+
+    """Implements search utilities"""
+
+    @staticmethod
+    def create_ray_in_two_dimension(from_point, to_point):
+        """Returns a ray defined by the two points"""
+        assert isinstance(from_point, PointInTwoDimension)
+        assert isinstance(to_point, PointInTwoDimension)
+        tan = (to_point.z2() - from_point.z2()) / (to_point.z1() - from_point.z1()) if \
+            to_point.z1() != from_point.z1() else float("inf")
+        return RayInTwoDimension(math.degrees(math.atan(tan)), from_point)
+
+    @staticmethod
+    def partition_search_region_in_two_dimension(frontier, region):
+        """Partition the search region in two dimension
+        
+        NOTE: Eliminates the subset of the region dominated by the frontier, and returns the relatively nondominated 
+        sub-regions defined by the rays passing thorugh the extreme points of the frontier"""
+        assert isinstance(frontier, FrontierInTwoDimension)
+        assert isinstance(region, SearchRegionInTwoDimension)
+        initial_lb = region.lower_bound() or [0, 0]
+        origin = PointInTwoDimension([0, 0])
+        regions = []
+        if frontier.point():
+            point = frontier.point()
+            # left cone
+            left_extreme_ray = region.cone().left_extreme_ray()
+            right_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, point)
+            cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
+            bounds = [initial_lb[0], point.z2()]
+            lb = LowerBoundInTwoDimension(bounds)
+            regions.append(SearchRegionInTwoDimension(cone, edge=region.edge(), lower_bound=lb))
+            # right cone
+            right_extreme_ray = region.cone().right_extreme_ray()
+            left_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, point)
+            cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
+            bounds = [point.z1(), initial_lb[1]]
+            lb = LowerBoundInTwoDimension(bounds)
+            regions.append(SearchRegionInTwoDimension(cone, edge=region.edge(), lower_bound=lb))
+            return regions
+        for index, edge in enumerate(frontier.edges()):
+            left_extreme_ray = region.cone().left_extreme_ray() if index == 0 else \
+                SearchUtilities.create_ray_in_two_dimension(origin, edge.left_point())
+            right_extreme_ray = region.cone().right_extreme_ray() if index == len(frontier.edges()) - 1 else \
+                SearchUtilities.create_ray_in_two_dimension(origin, edge.right_point())
+            cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
+            regions.append(SearchRegionInTwoDimension(cone, edge=edge, lower_bound=initial_lb))
+        return regions

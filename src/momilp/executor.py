@@ -2,16 +2,17 @@
 
 import argparse
 from enum import Enum
+from gurobipy import Model, read
 from src.common.elements import SolverPackage
+from src.momilp.algorithm import AlgorithmFactory
 from src.momilp.model import GurobiMomilpModel
-import gurobipy
 
 
 class Executor:
 
     """Implements the momilp solver executor"""
 
-    _MODEL_CLASS_TO_SOLVER_PACKAGE = {GurobiMomilpModel: SolverPackage.GUROBI}
+    _MODEL_CLASS_TO_SOLVER_PACKAGE = {Model: SolverPackage.GUROBI}
     _SUPPORTED_SOLVER_PACKAGES = [SolverPackage.GUROBI]
     _UNSUPPORTED_SOLVER_PACKAGE_ERROR_MESSAGE = \
         "the solver package is not supported, define the model in one of the '{supported_solvers!s}' solver packages"
@@ -27,7 +28,8 @@ class Executor:
 
     def execute(self):
         """Executes the momilp solver"""
-        pass
+        algorithm = AlgorithmFactory.create(self._model)
+        algorithm.run()
 
 
 class MomilpSolverApp:
@@ -46,6 +48,6 @@ class MomilpSolverApp:
     def run(self):
         """Runs the command line application"""
         args = self._parse_args()
-        model = GurobiMomilpModel(file_name=args.model_file_path)
+        model = read(args.model_file_path)
         executor = Executor(model)
         executor.execute()

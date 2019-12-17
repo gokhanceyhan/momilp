@@ -1,12 +1,14 @@
 """Implements the search space elements and models"""
 
 import abc
+import copy
 from enum import Enum
 from gurobipy import Var
-from src.common.elements import EdgeInTwoDimension, FrontierInTwoDimension, FrontierSolution, PointInTwoDimension, \
-    SearchRegionInTwoDimension, SliceProblemResult
+from src.momilp.dominance import DominanceRules
+from src.common.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension, RayInTwoDimension, \
+    FrontierInTwoDimension, FrontierSolution, PointInTwoDimension, SearchRegionInTwoDimension, SliceProblemResult
 from src.molp.dichotomic_search.solver import BolpDichotomicSearchWithGurobiSolver
-from src.momilp.utilities import ConstraintGenerationUtilities, ModelQueryUtilities
+from src.momilp.utilities import ConstraintGenerationUtilities, ModelQueryUtilities, PointComparisonUtilities
 
 
 class Problem(metaclass=abc.ABCMeta):
@@ -49,6 +51,10 @@ class Problem(metaclass=abc.ABCMeta):
                 region.dim(), Problem._SUPPORTED_SEARCH_REGION_NUM_DIMENSIONS)
             raise RuntimeError(message) from error
     
+    def copy(self):
+        """Creates and returns a deep copy of the object"""
+        return copy.deepcopy(self)
+
     def momilp_model(self):
         """Returns the momilp model"""
         return self._momilp_model
@@ -75,6 +81,7 @@ class SearchProblem(Problem):
     def __init__(self, momilp_model):
         super(SearchProblem, self).__init__(momilp_model)
         self._num_tabu_constraints = 0
+        self._region = None
         self._result = None
 
     def _add_tabu_constraint(self, y_bars):
@@ -100,6 +107,10 @@ class SearchProblem(Problem):
         """Returns the number of tabu-constraints"""
         return self._num_tabu_constraints
 
+    def region(self):
+        """Returns the last added search region"""
+        return self._region
+
     def result(self):
         self._result
 
@@ -117,6 +128,7 @@ class SearchProblem(Problem):
         if region:
             SearchProblem._validate_search_region(region)
             self._add_region_defining_constraints_in_two_dimension(region)
+            self._region = region
         if not keep_previous_tabu_constraints:
             self._remove_tabu_constraints()
         if tabu_y_bars:
@@ -127,19 +139,52 @@ class SearchSpace:
 
     """Implements search space for the momilp problem"""
 
-    _DEFAULT_DIMEMSION = 3
-
-    def __init__(self, dimension=None, primary_criterion_index=1):
-        self._dimension = SearchSpace._DEFAULT_DIMEMSION
+    def __init__(self, primary_criterion_index, sorting_criteria_index, dimension=3):
+        assert primary_criterion_index != sorting_criteria_index, \
+            "search space sorting criteria index cannot be the primary criterion index"
+        assert dimension == 3, "only three dimensional search spaces are supported currently"
+        self._dimension = dimension
         self._primary_criterion_index = primary_criterion_index
         self._search_problems = []
-        self._initialize()
+        self._sorting_criteria_index = sorting_criteria_index
 
-    def _initialize(self):
-        """Initializes the search space"""
+    def add_search_problem(self, search_problem, index=None):
+        """Add the search problem to the search problems in the search space"""
+        if index:
+            self._search_problems.insert(index, search_problem)
+        else:
+            self._search_problems.append(search_problem)
 
-    def update(self):
-        """Updates the search space"""
+    def delete_search_problem(self, index=-1):
+        """Deletes the search problem at the given index"""
+        assert self._search_problems
+        del self._search_problems[index]
+
+    def search_problems(self):
+        """Returns the search problems in the search space"""
+        return self._search_problems
+
+    def sorting_criteria_index(self):
+        """Returns the search problem sorting criteria index"""
+        return self._sorting_criteria_index
+
+    def update_lower_bounds(self, reference_point, selected_search_problem_index):
+        """Updates the lower bounds of the search problems to eliminate the dominated regions by the reference point 
+        and, solves the search problems again if their point solutions are dominated"""
+        for index, search_problem in enumerate(self._search_problems):
+            if index == selected_search_problem_index:
+                continue
+            update_bound_index = self._sorting_criteria_index if index > selected_search_problem_index else [
+                i for i in range(self._dimension) if i != self._primary_criterion_index and 
+                i != self._sorting_criteria_index][0]
+            lb = search_problem.region().lower_bound()
+            lb[update_bound_index] = max(lb[update_bound_index], reference_point.values()[update_bound_index])
+            point_solution = search_problem.result().point_solution().point()
+            if DominanceRules.PointToPoint.dominated(point_solution.point(), reference_point):
+                search_problem.update_model(
+                    keep_previous_region_constraints=True, keep_previous_tabu_constraints=True, 
+                    tabu_y_bars=[point_solution.y_bar()])
+                search_problem.solve()
 
 
 class SliceProblem(Problem):
@@ -215,6 +260,7 @@ class SliceProblem(Problem):
                             left_point=point, right_point=points[index + 1], z3=self._primary_objective_value))
             frontier_solution = FrontierSolution(FrontierInTwoDimension(edges=edges), self._y_bar)
         self._result = SliceProblemResult(frontier_solution)
+        return self._result
 
     def update_model(self, y_bar, keep_previous_region_constraints=False, primary_objective_value=0, region=None):
         self._primary_objective_value = primary_objective_value

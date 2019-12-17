@@ -50,9 +50,17 @@ class Edge:
         """Returns True if the end-point is inclusive"""
         return self._end_inclusive
 
+    def end_point(self):
+        """Returns the end point of the edge"""
+        return self._end_point
+
     def start_inclusive(self):
         """Returns True if the start-point is inclusive"""
         return self._start_inclusive
+
+    def start_point(self):
+        """Returns the start point of the edge"""
+        return self._start_point
 
 
 class EdgeInTwoDimension(Edge):
@@ -169,6 +177,10 @@ class FrontierInTwoDimension:
         """Returns the point in the frontier"""
         return self._point
 
+    def singleton(self):
+        """Returns True if the frontier is a singleton, otherwise False"""
+        return self._point() and not self._edges 
+
 
 class FrontierEdgeInTwoDimension(EdgeInTwoDimension):
 
@@ -187,10 +199,27 @@ class FrontierSolution(Solution):
     def __init__(self, frontier, y_bar):
         super(FrontierSolution, self).__init__(y_bar)
         self._frontier = frontier
+        self._set_ideal_point()
+
+    def _set_ideal_point(self):
+        """Sets the ideal point"""
+        crtierion_index_2_max_value = {i: v for i, v in enumerate(self._frontier.point().values())}
+        for edge in self._frontier.edges():
+            for index, value in enumerate(edge.start_point().values()):
+                if value > crtierion_index_2_max_value[index]:
+                    crtierion_index_2_max_value[index] = value
+            for index, value in enumerate(edge.end_point().values()):
+                if value > crtierion_index_2_max_value[index]:
+                    crtierion_index_2_max_value[index] = value
+        self._ideal_point = Point(list(crtierion_index_2_max_value.values()))
 
     def frontier(self):
         """Returns the frontier"""
         return self._frontier
+
+    def ideal_point(self):
+        """Returns the ideal point of the frontier"""
+        return self._ideal_point
 
     def y_bar(self):
         """Returns the integer vector"""
@@ -232,6 +261,16 @@ class LowerBoundInTwoDimension(LowerBound):
     def z2(self):
         """Returns the lower bound on the second criterion value"""
         return self._bounds[1] if len(self._bounds) > 1 else None
+
+
+class OptimizationStatus(Enum):
+
+    """Represents an optimization status"""
+
+    OPTIMAL = "optimal"
+    FEASIBLE = "feasible"
+    INFEASIBLE = "infeasible"
+    UNDEFINED = "undefined"
 
 
 class Point:
@@ -347,7 +386,7 @@ class SearchProblemResult:
     def status(self):
         """Returns the optimization status"""
         return self._status
-
+    
 
 class SearchRegion(metaclass=abc.ABCMeta):
 
@@ -419,9 +458,6 @@ class SearchRegionInTwoDimension(SearchRegion):
     def lower_bound(self):
         """Returns the lower bound"""
         return self._lower_bound
-    
-    def partition(self, frontier):
-        """Partitions the search region to eliminate the space dominated by the frontier"""
 
     def x_obj_name(self):
         """Returns the obj name for the x-axis of the region"""
@@ -436,9 +472,9 @@ class SearchStatus(Enum):
 
     """Implements search status"""
 
-    FEASIBLE = "feasible"
-    INFEASIBLE = "infeasible"
-    OPTIMAL = "optimal"
+    COMPLETED = 0
+    TERMINATED_BY_TIME_LIMIT = 1
+    TERMINATED_WITH_ERROR = 2
 
 
 class SliceProblemResult:
