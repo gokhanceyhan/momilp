@@ -4,7 +4,7 @@ from hamcrest import assert_that, has_key, is_
 from gurobipy import GRB
 import os
 from src.common.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension, LowerBoundInTwoDimension, \
-    PointInTwoDimension, RayInTwoDimension, SearchRegionInTwoDimension
+    OptimizationStatus, PointInTwoDimension, RayInTwoDimension, SearchRegionInTwoDimension
 from src.momilp.model import GurobiMomilpModel
 from src.momilp.search import SearchProblem, SliceProblem
 from unittest import TestCase
@@ -26,7 +26,7 @@ class SearchProblemTest(TestCase):
         result = search_problem.solve()
         point_solution = result.point_solution()
         # check the unrestricted search problem
-        self.assert_that(result.status(), is_(GRB.OPTIMAL))
+        self.assert_that(result.status(), is_(OptimizationStatus.OPTIMAL))
         y_opt = [
             1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         self.assert_that(point_solution.y_bar(), is_(y_opt))
@@ -36,7 +36,7 @@ class SearchProblemTest(TestCase):
         self.assert_that(model.constraint_name_2_constraint(), has_key("tabu_0"))
         result = search_problem.solve()
         point_solution = result.point_solution()
-        self.assert_that(result.status(), is_(GRB.OPTIMAL))
+        self.assert_that(result.status(), is_(OptimizationStatus.OPTIMAL))
         y_opt = [
             1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         self.assert_that(point_solution.y_bar(), is_(y_opt))
@@ -46,7 +46,7 @@ class SearchProblemTest(TestCase):
         self.assert_that(model.constraint_name_2_constraint(), has_key("tabu_1"))
         result = search_problem.solve()
         point_solution = result.point_solution()
-        self.assert_that(result.status(), is_(GRB.OPTIMAL))
+        self.assert_that(result.status(), is_(OptimizationStatus.OPTIMAL))
         y_opt = [
             1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         self.assert_that(point_solution.y_bar(), is_(y_opt))
@@ -56,7 +56,7 @@ class SearchProblemTest(TestCase):
         self.assert_that(model.constraint_name_2_constraint(), has_key("tabu_0"))
         result = search_problem.solve()
         point_solution = result.point_solution()
-        self.assert_that(result.status(), is_(GRB.OPTIMAL))
+        self.assert_that(result.status(), is_(OptimizationStatus.OPTIMAL))
         y_opt = [
             1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         self.assert_that(point_solution.y_bar(), is_(y_opt))
