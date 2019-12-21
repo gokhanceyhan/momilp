@@ -3,6 +3,8 @@
 from gurobipy import Constr, GRB, LinExpr
 import math
 import operator
+import os
+import pandas as pd
 from src.common.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension, FrontierInTwoDimension, \
     LowerBoundInTwoDimension, OptimizationStatus, Point, PointInTwoDimension, PointSolution, RayInTwoDimension, \
     SearchProblemResult, SearchRegionInTwoDimension
@@ -130,6 +132,33 @@ class ModelQueryUtilities:
         return SearchProblemResult(PointSolution(Point(values), y_bar), status)
 
 
+class ReportCreator:
+
+    """Implements the report utilities"""
+
+    def __init__(self, momilp_model, state, output_dir):
+        self._momilp_model = momilp_model
+        self._output_dir = output_dir
+        self._state = state
+
+    def _export_nondominated_set(self, file_name):
+        """Exports the nondominated set to the specified csv file"""
+        solution_state = self._state.solution_state()
+        obj_index_2_name = self._momilp_model.objective_index_2_name()
+        points = [nondominated_point.point() for nondominated_point in solution_state.nondominated_points()]
+        records = []
+        for point in points:
+            records.append({obj_index_2_name[index]: value for index, value in enumerate(point.values())})
+        df = pd.DataFrame.from_records(records)
+        print(df)
+
+    def create(self):
+        """Creates the report"""
+        nondominated_set_file_name = os.path.join(self._output_dir, "nondominated_set.csv")
+        self._export_nondominated_set(nondominated_set_file_name)
+        
+
+
 class PointComparisonUtilities:
 
     """Implements point comparison utilities"""
@@ -155,8 +184,6 @@ class SearchUtilities:
 
     """Implements search utilities"""
 
-    _LOWER_BOUND_DELTA = 1e-3
-
     @staticmethod
     def create_ray_in_two_dimension(from_point, to_point):
         """Returns a ray defined by the two points"""
@@ -167,7 +194,7 @@ class SearchUtilities:
         return RayInTwoDimension(math.degrees(math.atan(tan)), from_point)
 
     @staticmethod
-    def partition_search_region_in_two_dimension(frontier, region, lift_lower_bounds=True):
+    def partition_search_region_in_two_dimension(frontier, region, lower_bound_delta=0.0):
         """Partition the search region in two dimension
         
         NOTE: Eliminates the subset of the region dominated by the frontier, and returns the relatively nondominated 
@@ -177,7 +204,6 @@ class SearchUtilities:
         assert isinstance(region, SearchRegionInTwoDimension)
         x_obj_name = region.x_obj_name()
         y_obj_name = region.y_obj_name()
-        delta = SearchUtilities._LOWER_BOUND_DELTA if lift_lower_bounds else 0
         initial_lb = region.lower_bound().bounds() if region.lower_bound() else [0, 0]
         origin = PointInTwoDimension([0, 0])
         regions = []
@@ -187,14 +213,14 @@ class SearchUtilities:
             left_extreme_ray = region.cone().left_extreme_ray()
             right_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, point)
             cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
-            bounds = [initial_lb[0] + delta, point.z2() + delta]
+            bounds = [initial_lb[0], point.z2() + lower_bound_delta]
             lb = LowerBoundInTwoDimension(bounds)
             regions.append(SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb))
             # right cone
             right_extreme_ray = region.cone().right_extreme_ray()
             left_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, point)
             cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
-            bounds = [point.z1() + delta, initial_lb[1] + delta]
+            bounds = [point.z1() + lower_bound_delta, initial_lb[1]]
             lb = LowerBoundInTwoDimension(bounds)
             regions.append(SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb))
             return regions

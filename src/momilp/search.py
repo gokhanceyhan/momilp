@@ -173,7 +173,11 @@ class SearchSpace:
         """Returns the search problems in the search space"""
         return self._search_problems
 
-    def update_lower_bounds(self, reference_point, selected_search_problem_index):
+    def set_search_problems(self, search_problems):
+        """Sets the search problems"""
+        self._search_problems = search_problems
+
+    def update_lower_bounds(self, reference_point, selected_search_problem_index, delta=0.0):
         """Updates the lower bounds of the search problems to eliminate the dominated regions by the reference point 
         and, solves the search problems again if their point solutions are dominated"""
         for index, search_problem in enumerate(self._search_problems):
@@ -182,15 +186,14 @@ class SearchSpace:
             update_bound_index = 0 if index > selected_search_problem_index else 1
             reference_point_value = reference_point.values()[
                 self._projected_space_criterion_index_2_criterion_index[update_bound_index]]
-            lb = search_problem.region().lower_bound().bounds()
-            lb[update_bound_index] = max(lb[update_bound_index], reference_point_value)
-            point_solution = search_problem.result().point_solution()
+            region = search_problem.region()
+            lb = region.lower_bound().bounds()
+            lb[update_bound_index] = max(lb[update_bound_index], reference_point_value + delta)
+            point_solution = search_problem.result().point_solution()            
             if DominanceRules.PointToPoint.dominated(point_solution.point(), reference_point):
                 search_problem.update_model(
-                    keep_previous_region_constraints=True, keep_previous_tabu_constraints=True, 
-                    tabu_y_bars=[point_solution.y_bar()])
+                    region=region, keep_previous_tabu_constraints=True, tabu_y_bars=[point_solution.y_bar()])
                 search_problem.solve()
-
 
 class SliceProblem(Problem):
 

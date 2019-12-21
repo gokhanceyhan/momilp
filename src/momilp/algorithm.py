@@ -72,11 +72,14 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
 
     """Implements the cone-based search algorithm"""
 
+    _LOWER_BOUND_DELTA = 1e-3
+
     def __init__(self, model_file, working_dir, discrete_objective_indices=None, explore_decision_space=False):
         self._discrete_objective_indices = discrete_objective_indices or []
         self._errors = []
         self._explore_decision_space = explore_decision_space
         self._model_file = model_file
+        self._momilp_model = None
         self._objective_index_2_priority = {}
         self._primary_objective_index = None
         self._projected_space_criterion_index_2_criterion_index = {}
@@ -109,19 +112,21 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         y_obj_index = self._projected_space_criterion_index_2_criterion_index[1]
         self._x_obj_name = momilp_model.objective_index_2_name()[x_obj_index]
         self._y_obj_name = momilp_model.objective_index_2_name()[y_obj_index]
+        # NOTE: Use differemt instances of momilp model in search and slice problems
+        self._momilp_model = momilp_model
         # create the initial search problem
         cone = self._create_positive_quadrant_convex_cone()
         region = SearchRegionInTwoDimension(self._x_obj_name, self._y_obj_name, cone)
         try:
-            search_problem = SearchProblem(momilp_model)
+            search_problem = SearchProblem(self._create_momilp_model())
         except BaseException as e:
             raise RuntimeError(
                 "failed to create the search problem in the initialization of the cone-based search algorithm") from e
         search_problem.update_model(region=region)
         # create a slice problem
-        momilp_model = self._create_momilp_model()
         try:
-            slice_problem = SliceProblem(momilp_model, self._projected_space_criterion_index_2_criterion_index)
+            slice_problem = SliceProblem(
+                self._create_momilp_model(), self._projected_space_criterion_index_2_criterion_index)
         except BaseException as e:
             raise RuntimeError(
                 "failed to create the slice problem in the initialization of the cone-based search algorithm") from e
@@ -132,6 +137,10 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         # create the initial solution state
         solution_state = SolutionState()
         self._state = State(search_space, slice_problem, solution_state=solution_state)
+    
+    def _is_problem_feasible(problem):
+        """Returns True if the problem is feasible, False othwerwise"""
+        return problem.result().status() in [OptimizationStatus.OPTIMAL, OptimizationStatus.FEASIBLE]
 
     def _select_search_problem_and_index(self, search_problems):
         """Selects the search problem, returns with index"""
@@ -160,15 +169,12 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
                     "the problem '%s' failed with error '%s' in iteration '%s'" % (
                         id(search_problem), e, iteration_index))
                 search_problem.momilp_model().write(os.path.join(self._working_dir, id(search_problem) + ".lp"))     
-        search_problems[:] = [
-            p for p in search_problems if p.result().status() in 
-            [OptimizationStatus.OPTIMAL, OptimizationStatus.FEASIBLE]]
+        search_problems[:] = [p for p in search_problems if ConeBasedSearchAlgorithm._is_problem_feasible(p)]
         return search_problems
 
     def _solve_slice_problem(self, selected_point_solution, region, iteration_index):
         """Solves the slice problem and returns the result"""
         slice_problem = self._state.slice_problem()
-        self._state.slice_problem().momilp_model().write("./logs/slice_%d.lp" % iteration_index)
         slice_problem.update_model(
             selected_point_solution.y_bar(), 
             primary_objective_value=selected_point_solution.point().values()[self._primary_objective_index], 
@@ -197,10 +203,15 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             for edge in edges:
                 state.solution_state().add_weakly_nondominated_edge(EdgeSolution(edge, selected_point_solution.y_bar()))
 
+    def momilp_model(self):
+        """Returns the momilp model"""
+        return self._momilp_model
+
     def run(self):
         state = self._state
         search_space = state.search_space()
         search_problems = search_space.search_problems()
+        lower_bound_delta = ConeBasedSearchAlgorithm._LOWER_BOUND_DELTA if not self._explore_decision_space else 0.0
         iteration_index = 0
         while search_problems:
             # search all of the regions and remove the infeasible ones
@@ -218,27 +229,22 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             frontier = slice_problem_result.frontier_solution().frontier()
             y_bar = slice_problem_result.frontier_solution().y_bar()
             # update the search space
-            search_space.update_lower_bounds(slice_problem_result.ideal_point(), selected_search_problem_index)
+            search_space.update_lower_bounds(
+                slice_problem_result.ideal_point(), selected_search_problem_index, delta=lower_bound_delta)
             # update the state
             self._update_state(selected_point_solution, frontier, iteration_index)
             # partition the selected search region
             selected_region = selected_search_problem.region()
             child_search_regions = SearchUtilities.partition_search_region_in_two_dimension(
-                frontier, selected_region, lift_lower_bounds=(not self._explore_decision_space))
-            
-            selected_search_problem.momilp_model().write(
-                "./logs/iteration_%d_parent_%d.lp" % (iteration_index, selected_search_problem_index))            
-         
+                frontier, selected_region, lower_bound_delta=lower_bound_delta)     
             for child_index, region in enumerate(child_search_regions):
                 search_problem = SearchProblem(self._create_momilp_model())
                 tabu_y_bars = selected_search_problem.tabu_y_bars()[:]
                 tabu_y_bars.append(y_bar)
                 search_problem.update_model(region=region, tabu_y_bars=tabu_y_bars)
-                
-                search_problem.momilp_model().write("./logs/iteration_%d_child_%d.lp" % (iteration_index, child_index))
-                
                 search_space.add_search_problem(search_problem, index=selected_search_problem_index + 1 + child_index)
             search_space.delete_search_problem(selected_search_problem_index)
             # update the iteration index
             state.iterations().append(Iteration(iteration_index, selected_point_solution=selected_point_solution))
             iteration_index += 1
+        return self._state

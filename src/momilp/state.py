@@ -56,7 +56,15 @@ class SolutionState:
         self._nondominated_edges.extend(self._weakly_nondominated_edges)
         self._weakly_nondominated_edges = []
         self._nondominated_points.extend(self._weakly_nondominated_points)
-        self._weakly_nondominated_points = []        
+        self._weakly_nondominated_points = []
+
+    def nondominated_edges(self):
+        """Returns the nondominated edges"""
+        return self._nondominated_edges
+
+    def nondominated_points(self):
+        """Returns the nondominated points"""
+        return self._nondominated_points
 
 
 class State:

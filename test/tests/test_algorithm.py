@@ -7,6 +7,7 @@ from src.momilp.algorithm import AlgorithmFactory, AlgorithmType
 from src.momilp.executor import Executor
 from src.momilp.model import GurobiMomilpModel
 from src.momilp.search import SliceProblem
+from src.momilp.utilities import ReportCreator
 from unittest import TestCase
 
 class ConeBasedSearchAlgorithmTest(TestCase):
@@ -24,7 +25,9 @@ class ConeBasedSearchAlgorithmTest(TestCase):
         algorithm = AlgorithmFactory.create(
             model_file, self._logs_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, 
             discrete_objective_indices=[0, 1, 2])
-        algorithm.run()
+        state = algorithm.run()
+        report_creator = ReportCreator(algorithm.momilp_model(), state, self._logs_dir)
+        report_creator.create()
 
     def test_three_obj_linear_programming_problem(self):
         """Tests the algorithm on a three-objective linear program"""
