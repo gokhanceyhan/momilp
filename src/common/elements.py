@@ -179,7 +179,7 @@ class FrontierInTwoDimension:
 
     def singleton(self):
         """Returns True if the frontier is a singleton, otherwise False"""
-        return self._point() and not self._edges 
+        return self._point and not self._edges 
 
 
 class FrontierEdgeInTwoDimension(EdgeInTwoDimension):
@@ -199,27 +199,10 @@ class FrontierSolution(Solution):
     def __init__(self, frontier, y_bar):
         super(FrontierSolution, self).__init__(y_bar)
         self._frontier = frontier
-        self._set_ideal_point()
-
-    def _set_ideal_point(self):
-        """Sets the ideal point"""
-        crtierion_index_2_max_value = {i: v for i, v in enumerate(self._frontier.point().values())}
-        for edge in self._frontier.edges():
-            for index, value in enumerate(edge.start_point().values()):
-                if value > crtierion_index_2_max_value[index]:
-                    crtierion_index_2_max_value[index] = value
-            for index, value in enumerate(edge.end_point().values()):
-                if value > crtierion_index_2_max_value[index]:
-                    crtierion_index_2_max_value[index] = value
-        self._ideal_point = Point(list(crtierion_index_2_max_value.values()))
 
     def frontier(self):
         """Returns the frontier"""
         return self._frontier
-
-    def ideal_point(self):
-        """Returns the ideal point of the frontier"""
-        return self._ideal_point
 
     def y_bar(self):
         """Returns the integer vector"""
@@ -401,7 +384,7 @@ class SearchRegionInTwoDimension(SearchRegion):
 
     """Implements search region in two-dimensional space"""
 
-    def __init__(self, cone, edge=None, lower_bound=None, id_=None, x_obj_name=None, y_obj_name=None):
+    def __init__(self, x_obj_name, y_obj_name, cone, edge=None, lower_bound=None, id_=None):
         self._cone = cone
         self._dim = 2
         self._edge = edge
@@ -481,13 +464,18 @@ class SliceProblemResult:
 
     """Implements slice problem result"""
 
-    def __init__(self, frontier_solution, status=None):
+    def __init__(self, frontier_solution, ideal_point, status=None):
         self._frontier_solution = frontier_solution
+        self._ideal_point = ideal_point
         self._status = status
 
     def frontier_solution(self):
         """Returns the frontier solution"""
         return self._frontier_solution
+
+    def ideal_point(self):
+        """Returns the ideal point which is set after the frontier is generated"""
+        return self._ideal_point
 
     def status(self):
         """Returns the optimization status"""

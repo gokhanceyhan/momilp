@@ -13,7 +13,7 @@ class ModelQueryUtilities:
         status = model.getAttr("Status")
         if status in [GRB.INF_OR_UNBD, GRB.INFEASIBLE, GRB.UNBOUNDED]:
             message = "the optimization call for the '%s' model ended with the '%s' status" % (
-                    model.getAttr("ModelName"), status.value)
+                    model.getAttr("ModelName"), status)
             if solver_stage:
                 message = " ".join([message, "in the '%s' stage" % solver_stage])
             raise RuntimeError(message)

@@ -142,8 +142,7 @@ class PointComparisonUtilities:
         point, else -1"""
         assert len(base_point.values()) == len(compared_point.values())
         indicies_in_lexicographic_order = [
-            operator.itemgetter(0) for item in sorted(value_index_2_priority.items(), key=operator.itemgetter(1), 
-            reverse=True)]
+            item[0] for item in sorted(value_index_2_priority.items(), key=operator.itemgetter(1), reverse=True)]
         for index in indicies_in_lexicographic_order:
             if base_point.values()[index] > compared_point.values()[index]:
                 return 1
@@ -156,6 +155,8 @@ class SearchUtilities:
 
     """Implements search utilities"""
 
+    _LOWER_BOUND_DELTA = 1e-3
+
     @staticmethod
     def create_ray_in_two_dimension(from_point, to_point):
         """Returns a ray defined by the two points"""
@@ -166,14 +167,18 @@ class SearchUtilities:
         return RayInTwoDimension(math.degrees(math.atan(tan)), from_point)
 
     @staticmethod
-    def partition_search_region_in_two_dimension(frontier, region):
+    def partition_search_region_in_two_dimension(frontier, region, lift_lower_bounds=True):
         """Partition the search region in two dimension
         
         NOTE: Eliminates the subset of the region dominated by the frontier, and returns the relatively nondominated 
-        sub-regions defined by the rays passing thorugh the extreme points of the frontier"""
+        sub-regions defined by the rays passing thorugh the extreme points of the frontier. Returned regions are in the 
+        order of cones with left extreme rays having non-increasing angles with the x-axis (index 0)"""
         assert isinstance(frontier, FrontierInTwoDimension)
         assert isinstance(region, SearchRegionInTwoDimension)
-        initial_lb = region.lower_bound() or [0, 0]
+        x_obj_name = region.x_obj_name()
+        y_obj_name = region.y_obj_name()
+        delta = SearchUtilities._LOWER_BOUND_DELTA if lift_lower_bounds else 0
+        initial_lb = region.lower_bound().bounds() if region.lower_bound() else [0, 0]
         origin = PointInTwoDimension([0, 0])
         regions = []
         if frontier.point():
@@ -182,16 +187,16 @@ class SearchUtilities:
             left_extreme_ray = region.cone().left_extreme_ray()
             right_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, point)
             cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
-            bounds = [initial_lb[0], point.z2()]
+            bounds = [initial_lb[0] + delta, point.z2() + delta]
             lb = LowerBoundInTwoDimension(bounds)
-            regions.append(SearchRegionInTwoDimension(cone, edge=region.edge(), lower_bound=lb))
+            regions.append(SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb))
             # right cone
             right_extreme_ray = region.cone().right_extreme_ray()
             left_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, point)
             cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
-            bounds = [point.z1(), initial_lb[1]]
+            bounds = [point.z1() + delta, initial_lb[1] + delta]
             lb = LowerBoundInTwoDimension(bounds)
-            regions.append(SearchRegionInTwoDimension(cone, edge=region.edge(), lower_bound=lb))
+            regions.append(SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb))
             return regions
         for index, edge in enumerate(frontier.edges()):
             left_extreme_ray = region.cone().left_extreme_ray() if index == 0 else \
@@ -199,5 +204,7 @@ class SearchUtilities:
             right_extreme_ray = region.cone().right_extreme_ray() if index == len(frontier.edges()) - 1 else \
                 SearchUtilities.create_ray_in_two_dimension(origin, edge.right_point())
             cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
-            regions.append(SearchRegionInTwoDimension(cone, edge=edge, lower_bound=initial_lb))
+            regions.append(
+                SearchRegionInTwoDimension(
+                    x_obj_name, y_obj_name, cone, edge=edge, lower_bound=LowerBoundInTwoDimension(initial_lb)))
         return regions
