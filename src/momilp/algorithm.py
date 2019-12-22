@@ -198,7 +198,6 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             primary_objective_value=selected_point_solution.point().values()[self._primary_objective_index], 
             region=region)
         try:
-            slice_problem.momilp_model().write("./logs/slice.lp")
             return slice_problem.solve()
         except BaseException as e:
             raise RuntimeError(
@@ -237,10 +236,6 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         while search_problems:
             # search all of the regions and remove the infeasible ones
             search_problems = self._solve_search_problems(iteration_index, search_problems)
-
-            for index, p in enumerate(search_problems):
-                p.momilp_model().write("./logs/iteration_%d_region_%d.lp" %(iteration_index, index))
-
             if not search_problems:
                 state.solution_state().move_weakly_nondominated_to_nondominated()
                 break
