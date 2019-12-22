@@ -139,24 +139,49 @@ class ReportCreator:
     def __init__(self, momilp_model, state, output_dir):
         self._momilp_model = momilp_model
         self._output_dir = output_dir
+        self._nondominated_edges_df = None
+        self._nondominated_points_df = None
         self._state = state
 
-    def _export_nondominated_set(self, file_name):
-        """Exports the nondominated set to the specified csv file"""
+    def _set_nondominated_edges_df(self):
+        """Sets the nondominated edges data frame"""
+        solution_state = self._state.solution_state()
+        obj_index_2_name = self._momilp_model.objective_index_2_name()
+        edges = [nondominated_edge.edge() for nondominated_edge in solution_state.nondominated_edges()]
+        records = []
+        for edge in edges:
+            records.append(
+                {
+                    obj_index_2_name[index]: value for index, value in 
+                    enumerate(zip(edge.start_point().values(), edge.end_point().values()))})
+        self._nondominated_edges_df = pd.DataFrame.from_records(records)
+
+    def _set_nondominated_points_df(self):
+        """Sets the nondominated points data frame"""
         solution_state = self._state.solution_state()
         obj_index_2_name = self._momilp_model.objective_index_2_name()
         points = [nondominated_point.point() for nondominated_point in solution_state.nondominated_points()]
         records = []
         for point in points:
             records.append({obj_index_2_name[index]: value for index, value in enumerate(point.values())})
-        df = pd.DataFrame.from_records(records)
-        print(df)
+        self._nondominated_points_df = pd.DataFrame.from_records(records)
 
-    def create(self):
-        """Creates the report"""
-        nondominated_set_file_name = os.path.join(self._output_dir, "nondominated_set.csv")
-        self._export_nondominated_set(nondominated_set_file_name)
+    def create_data_frames(self):
+        """Creates the data frames of the report"""
+        self._set_nondominated_edges_df()
+        self._set_nondominated_points_df()
+
+    def export(self):
+        """Writes the files to the spcified output directory"""
+        pass
+
+    def nondominated_edges_df(self):
+        """Returns the nondominated edges data frame"""
+        return self._nondominated_edges_df
         
+    def nondominated_points_df(self):
+        """Returns the nondominated points data frame"""
+        return self._nondominated_points_df
 
 
 class PointComparisonUtilities:

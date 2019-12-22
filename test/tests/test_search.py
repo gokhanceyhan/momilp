@@ -7,7 +7,7 @@ from src.common.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension
     OptimizationStatus, PointInTwoDimension, RayInTwoDimension, SearchRegionInTwoDimension
 from src.momilp.model import GurobiMomilpModel
 from src.momilp.search import SearchProblem, SliceProblem
-from unittest import TestCase
+from unittest import main, TestCase
 
 
 class SearchProblemTest(TestCase):
@@ -93,3 +93,7 @@ class SliceProblemTest(TestCase):
         slice_problem.solve()
         result = slice_problem.result()
         self.assert_that(result.frontier_solution().frontier().point(), is_(PointInTwoDimension([7, 6])))
+
+
+if __name__ == '__main__':
+    main()

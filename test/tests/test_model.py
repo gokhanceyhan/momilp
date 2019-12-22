@@ -4,7 +4,7 @@ from hamcrest import assert_that, has_key, is_
 import gurobipy
 import os
 from src.momilp.model import GurobiMomilpModel
-from unittest import TestCase
+from unittest import main, TestCase
 
 class GurobiMomilpModelTest(TestCase):
 
@@ -60,3 +60,6 @@ class GurobiMomilpModelTest(TestCase):
             if objective_name == "Set2":
                 self.assert_that(objective_scaler(10), is_(10))
 
+
+if __name__ == '__main__':
+    main()

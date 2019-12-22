@@ -7,7 +7,8 @@ from gurobipy import Var
 import operator
 from src.momilp.dominance import DominanceRules
 from src.common.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension, RayInTwoDimension, \
-    FrontierInTwoDimension, FrontierSolution, Point, PointInTwoDimension, SearchRegionInTwoDimension, SliceProblemResult
+    FrontierEdgeInTwoDimension, FrontierInTwoDimension, FrontierSolution, Point, PointInTwoDimension, \
+    SearchRegionInTwoDimension, SliceProblemResult
 from src.molp.dichotomic_search.solver import BolpDichotomicSearchWithGurobiSolver
 from src.momilp.utilities import ConstraintGenerationUtilities, ModelQueryUtilities, PointComparisonUtilities
 
@@ -212,13 +213,14 @@ class SliceProblem(Problem):
     
     def _calculate_ideal_point(self, frontier_solution):
         """Returns the ideal point"""
-        criterion_index_2_max_value = {i: v for i, v in enumerate(frontier_solution.frontier().point().values())}
+        criterion_index_2_max_value = {i: v for i, v in enumerate(frontier_solution.frontier().point().values())} if \
+            frontier_solution.frontier().point() else {}
         for edge in frontier_solution.frontier().edges():
             for index, value in enumerate(edge.start_point().values()):
-                if value > criterion_index_2_max_value[index]:
+                if criterion_index_2_max_value.get(index) is None or value > criterion_index_2_max_value[index]:
                     criterion_index_2_max_value[index] = value
             for index, value in enumerate(edge.end_point().values()):
-                if value > criterion_index_2_max_value[index]:
+                if criterion_index_2_max_value.get(index) is None or value > criterion_index_2_max_value[index]:
                     criterion_index_2_max_value[index] = value
         ideal_point_obj_index_2_value = {
             self._slice_prob_obj_index_2_original_prob_obj_index[i]: value for i, value in 
@@ -283,7 +285,7 @@ class SliceProblem(Problem):
             for index, point in enumerate(points):
                 if len(points) > index + 1:
                     edges.append(
-                        EdgeInTwoDimension(
+                        FrontierEdgeInTwoDimension(
                             left_point=point, right_point=points[index + 1], z3=self._primary_objective_value))
             frontier_solution = FrontierSolution(FrontierInTwoDimension(edges=edges), self._y_bar)
         ideal_point = self._calculate_ideal_point(frontier_solution)

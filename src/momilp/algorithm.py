@@ -6,9 +6,9 @@ from enum import Enum
 from gurobipy import read
 import operator
 import os
-from src.common.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension, EdgeSolution, RayInTwoDimension, \
-    FrontierInTwoDimension, FrontierSolution, OptimizationStatus, PointInTwoDimension, PointSolution, \
-    SearchRegionInTwoDimension, SliceProblemResult
+from src.common.elements import ConvexConeInPositiveQuadrant, Edge, EdgeInTwoDimension, EdgeSolution, \
+    RayInTwoDimension, FrontierInTwoDimension, FrontierSolution, OptimizationStatus, Point, PointInTwoDimension, \
+    PointSolution, SearchRegionInTwoDimension, SliceProblemResult
 from src.momilp.model import GurobiMomilpModel
 from src.momilp.search import SearchProblem, SearchSpace, SliceProblem
 from src.momilp.state import Iteration, SolutionState, State
@@ -43,13 +43,17 @@ class AlgorithmFactory:
         "the '{num_obj!s}'-obj problem is not supported, select one of the '{supported_num_obj!s}' values"
 
     @staticmethod
-    def _create_cone_based_search_algorithm(model_file, working_dir, discrete_objective_indices=None):
+    def _create_cone_based_search_algorithm(
+            model_file, working_dir, discrete_objective_indices=None, explore_decision_space=False):
         """Creates and returns the cone-based search algorithm"""
-        return ConeBasedSearchAlgorithm(model_file, working_dir, discrete_objective_indices=None)
+        return ConeBasedSearchAlgorithm(
+            model_file, working_dir, discrete_objective_indices=discrete_objective_indices, 
+            explore_decision_space=explore_decision_space)
 
     @staticmethod
     def create(
-            model_file, working_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, discrete_objective_indices=None):
+            model_file, working_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, discrete_objective_indices=None, 
+            explore_decision_space=False):
         """Creates an algorithm"""
         model = read(model_file)
         num_obj = model.num_obj
@@ -65,7 +69,8 @@ class AlgorithmFactory:
         # We need to use the model file instead of model itself in order to create different model objects
         if algorithm_type == AlgorithmType.CONE_BASED_SEARCH:
             return AlgorithmFactory._create_cone_based_search_algorithm(
-                model_file, working_dir, discrete_objective_indices=discrete_objective_indices)
+                model_file, working_dir, discrete_objective_indices=discrete_objective_indices, 
+                explore_decision_space=explore_decision_space)
 
 
 class ConeBasedSearchAlgorithm(AbstractAlgorithm):
@@ -88,6 +93,18 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         self._y_obj_name = None
         self._working_dir = working_dir
         self._initialize()
+
+    def _convert_edge_in_projected_space_to_edge_original_space(self, edge):
+        """Returns an edge in the original search space from the edge in the projected search space"""
+        start_point = {
+            self._projected_space_criterion_index_2_criterion_index[index]: value for index, value in 
+            enumerate(edge.left_point().values())}
+        start_point[self._primary_objective_index] = edge.z3()
+        end_point = {
+            self._projected_space_criterion_index_2_criterion_index[index]: value for index, value in 
+            enumerate(edge.right_point().values())}
+        end_point[self._primary_objective_index] = edge.z3()
+        return Edge(Point(list(start_point.values())), Point(end_point.values()))
 
     def _create_momilp_model(self):
         """Creates and returns a momilp model"""
@@ -138,6 +155,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         solution_state = SolutionState()
         self._state = State(search_space, slice_problem, solution_state=solution_state)
     
+    @staticmethod
     def _is_problem_feasible(problem):
         """Returns True if the problem is feasible, False othwerwise"""
         return problem.result().status() in [OptimizationStatus.OPTIMAL, OptimizationStatus.FEASIBLE]
@@ -180,6 +198,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             primary_objective_value=selected_point_solution.point().values()[self._primary_objective_index], 
             region=region)
         try:
+            slice_problem.momilp_model().write("./logs/slice.lp")
             return slice_problem.solve()
         except BaseException as e:
             raise RuntimeError(
@@ -201,7 +220,9 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         else:
             edges = frontier.edges()
             for edge in edges:
-                state.solution_state().add_weakly_nondominated_edge(EdgeSolution(edge, selected_point_solution.y_bar()))
+                solution_edge = self._convert_edge_in_projected_space_to_edge_original_space(edge)
+                state.solution_state().add_weakly_nondominated_edge(
+                    EdgeSolution(solution_edge, selected_point_solution.y_bar()))
 
     def momilp_model(self):
         """Returns the momilp model"""
@@ -216,6 +237,10 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         while search_problems:
             # search all of the regions and remove the infeasible ones
             search_problems = self._solve_search_problems(iteration_index, search_problems)
+
+            for index, p in enumerate(search_problems):
+                p.momilp_model().write("./logs/iteration_%d_region_%d.lp" %(iteration_index, index))
+
             if not search_problems:
                 state.solution_state().move_weakly_nondominated_to_nondominated()
                 break

@@ -75,6 +75,7 @@ class EdgeInTwoDimension(Edge):
         self._right_inclusive = right_inclusive
         self._right_point = right_point
         self._z3 = z3
+        self._validate()
 
     def _validate(self):
         """Validates the edge in two-dimensional space"""
@@ -405,8 +406,10 @@ class SearchRegionInTwoDimension(SearchRegion):
         if not isinstance(edge, EdgeInTwoDimension):
             raise ValueError("the edge must be in two-dimensional space")
         left_extreme_ray = self._cone.left_extreme_ray()
-        tan_of_left_extreme_ray = math.tan(math.radians(left_extreme_ray.angle_in_degrees()))
-        tan_of_left_extreme_point = edge.left_point().z2() / edge.left_point().z1()
+        tan_of_left_extreme_ray = math.tan(math.radians(left_extreme_ray.angle_in_degrees())) if \
+            left_extreme_ray.angle_in_degrees() < 90 else float("inf")
+        tan_of_left_extreme_point = edge.left_point().z2() / edge.left_point().z1() if edge.left_point().z1() else \
+            float("inf")
         if not math.isclose(tan_of_left_extreme_ray, tan_of_left_extreme_point, rel_tol=0.001):
             raise ValueError(
                 "the left point of the edge '%s' is not on the left extreme ray of the cone with origin '%s' and " \
@@ -414,8 +417,10 @@ class SearchRegionInTwoDimension(SearchRegion):
                     edge.left_point().values(), left_extreme_ray.origin().values(), 
                     left_extreme_ray.angle_in_degrees()))
         right_extreme_ray = self._cone.right_extreme_ray()
-        tan_of_right_extreme_ray = math.tan(math.radians(right_extreme_ray.angle_in_degrees()))
-        tan_of_right_extreme_point = edge.right_point().z2() / edge.right_point().z1()
+        tan_of_right_extreme_ray = math.tan(math.radians(right_extreme_ray.angle_in_degrees())) if \
+            right_extreme_ray.angle_in_degrees() < 90 else float("inf")
+        tan_of_right_extreme_point = edge.right_point().z2() / edge.right_point().z1() if edge.right_point().z1() else \
+            float("inf")
         if not math.isclose(tan_of_right_extreme_ray, tan_of_right_extreme_point, rel_tol=0.001):
             raise ValueError(
                 "the right point of the edge '%s' is not on the right extreme ray of the cone with origin '%s' and " \
