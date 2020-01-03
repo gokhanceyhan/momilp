@@ -50,9 +50,17 @@ class Edge:
         """Returns True if the end-point is inclusive"""
         return self._end_inclusive
 
+    def end_point(self):
+        """Returns the end point of the edge"""
+        return self._end_point
+
     def start_inclusive(self):
         """Returns True if the start-point is inclusive"""
         return self._start_inclusive
+
+    def start_point(self):
+        """Returns the start point of the edge"""
+        return self._start_point
 
 
 class EdgeInTwoDimension(Edge):
@@ -67,6 +75,7 @@ class EdgeInTwoDimension(Edge):
         self._right_inclusive = right_inclusive
         self._right_point = right_point
         self._z3 = z3
+        self._validate()
 
     def _validate(self):
         """Validates the edge in two-dimensional space"""
@@ -169,6 +178,10 @@ class FrontierInTwoDimension:
         """Returns the point in the frontier"""
         return self._point
 
+    def singleton(self):
+        """Returns True if the frontier is a singleton, otherwise False"""
+        return self._point and not self._edges 
+
 
 class FrontierEdgeInTwoDimension(EdgeInTwoDimension):
 
@@ -232,6 +245,16 @@ class LowerBoundInTwoDimension(LowerBound):
     def z2(self):
         """Returns the lower bound on the second criterion value"""
         return self._bounds[1] if len(self._bounds) > 1 else None
+
+
+class OptimizationStatus(Enum):
+
+    """Represents an optimization status"""
+
+    OPTIMAL = "optimal"
+    FEASIBLE = "feasible"
+    INFEASIBLE = "infeasible"
+    UNDEFINED = "undefined"
 
 
 class Point:
@@ -347,7 +370,7 @@ class SearchProblemResult:
     def status(self):
         """Returns the optimization status"""
         return self._status
-
+    
 
 class SearchRegion(metaclass=abc.ABCMeta):
 
@@ -362,7 +385,7 @@ class SearchRegionInTwoDimension(SearchRegion):
 
     """Implements search region in two-dimensional space"""
 
-    def __init__(self, cone, edge=None, lower_bound=None, id_=None, x_obj_name=None, y_obj_name=None):
+    def __init__(self, x_obj_name, y_obj_name, cone, edge=None, lower_bound=None, id_=None):
         self._cone = cone
         self._dim = 2
         self._edge = edge
@@ -383,8 +406,10 @@ class SearchRegionInTwoDimension(SearchRegion):
         if not isinstance(edge, EdgeInTwoDimension):
             raise ValueError("the edge must be in two-dimensional space")
         left_extreme_ray = self._cone.left_extreme_ray()
-        tan_of_left_extreme_ray = math.tan(math.radians(left_extreme_ray.angle_in_degrees()))
-        tan_of_left_extreme_point = edge.left_point().z2() / edge.left_point().z1()
+        tan_of_left_extreme_ray = math.tan(math.radians(left_extreme_ray.angle_in_degrees())) if \
+            left_extreme_ray.angle_in_degrees() < 90 else float("inf")
+        tan_of_left_extreme_point = edge.left_point().z2() / edge.left_point().z1() if edge.left_point().z1() else \
+            float("inf")
         if not math.isclose(tan_of_left_extreme_ray, tan_of_left_extreme_point, rel_tol=0.001):
             raise ValueError(
                 "the left point of the edge '%s' is not on the left extreme ray of the cone with origin '%s' and " \
@@ -392,8 +417,10 @@ class SearchRegionInTwoDimension(SearchRegion):
                     edge.left_point().values(), left_extreme_ray.origin().values(), 
                     left_extreme_ray.angle_in_degrees()))
         right_extreme_ray = self._cone.right_extreme_ray()
-        tan_of_right_extreme_ray = math.tan(math.radians(right_extreme_ray.angle_in_degrees()))
-        tan_of_right_extreme_point = edge.right_point().z2() / edge.right_point().z1()
+        tan_of_right_extreme_ray = math.tan(math.radians(right_extreme_ray.angle_in_degrees())) if \
+            right_extreme_ray.angle_in_degrees() < 90 else float("inf")
+        tan_of_right_extreme_point = edge.right_point().z2() / edge.right_point().z1() if edge.right_point().z1() else \
+            float("inf")
         if not math.isclose(tan_of_right_extreme_ray, tan_of_right_extreme_point, rel_tol=0.001):
             raise ValueError(
                 "the right point of the edge '%s' is not on the right extreme ray of the cone with origin '%s' and " \
@@ -419,9 +446,6 @@ class SearchRegionInTwoDimension(SearchRegion):
     def lower_bound(self):
         """Returns the lower bound"""
         return self._lower_bound
-    
-    def partition(self, frontier):
-        """Partitions the search region to eliminate the space dominated by the frontier"""
 
     def x_obj_name(self):
         """Returns the obj name for the x-axis of the region"""
@@ -436,22 +460,27 @@ class SearchStatus(Enum):
 
     """Implements search status"""
 
-    FEASIBLE = "feasible"
-    INFEASIBLE = "infeasible"
-    OPTIMAL = "optimal"
+    COMPLETED = 0
+    TERMINATED_BY_TIME_LIMIT = 1
+    TERMINATED_WITH_ERROR = 2
 
 
 class SliceProblemResult:
 
     """Implements slice problem result"""
 
-    def __init__(self, frontier_solution, status=None):
+    def __init__(self, frontier_solution, ideal_point, status=None):
         self._frontier_solution = frontier_solution
+        self._ideal_point = ideal_point
         self._status = status
 
     def frontier_solution(self):
         """Returns the frontier solution"""
         return self._frontier_solution
+
+    def ideal_point(self):
+        """Returns the ideal point which is set after the frontier is generated"""
+        return self._ideal_point
 
     def status(self):
         """Returns the optimization status"""
@@ -473,6 +502,14 @@ class SolutionSet:
     def add_point_solution(self, point_solution):
         """Adds the point solution to the solution set"""
         self._point_solutions.add(point_solution)
+
+
+class SolverPackage(Enum):
+
+    """Represents a solver package"""
+
+    CPLEX = "cplex"
+    GUROBI = "gurobi"
 
 
 class SolverStage(Enum):

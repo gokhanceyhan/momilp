@@ -1,6 +1,7 @@
 """Implements the momilp model"""
 
 import abc
+import copy
 from gurobipy import GRB, LinExpr, Model, QuadExpr, read
 from operator import itemgetter
 from src.common.elements import SolverStage
@@ -16,8 +17,8 @@ class AbstractModel(metaclass=abc.ABCMeta):
         """Adds constraint to the problem and return the created constraint object"""
 
     @abc.abstractmethod
-    def copy_problem(self):
-        """Creates and returns a deep copy of the problem"""
+    def copy(self):
+        """Creates and returns a deep copy of the object"""
 
     @abc.abstractmethod
     def fix_integer_vector(self, y_bar):
@@ -94,6 +95,8 @@ class GurobiMomilpModel(AbstractModel):
         assert file_name or gurobi_model, "either file name or gurobi model must be given"
         self._model = gurobi_model or read(file_name)
         self._num_obj = num_obj
+        self._objective_index_2_name = {}
+        self._objective_index_2_priority = {}
         self._objective_name_2_range = {}
         self._objective_name_2_scaler = {}
         self._objective_name_2_variable = {}
@@ -116,6 +119,7 @@ class GurobiMomilpModel(AbstractModel):
         for obj_index in range(model.getAttr("NumObj")):
             model.setParam("ObjNumber", obj_index)
             name = model.getAttr("ObjNName")
+            self._objective_index_2_name[obj_index] = name
             obj = model.getObjective(index=obj_index)
             # define continuous variables for the objective functions
             obj_var = model.addVar(name=name)
@@ -131,6 +135,7 @@ class GurobiMomilpModel(AbstractModel):
 
     def _scale_model(self):
         """Scales the model"""
+        # MOMILP_TO_DO: It seems that the objective functions are not updated.
         model = self._model
         sense = model.getAttr("ModelSense")
         # Implement the procedure to transform the feasible objective space into R_{>=0}
@@ -148,12 +153,14 @@ class GurobiMomilpModel(AbstractModel):
             model.setAttr("ModelSense", -1)
             model.optimize()
             max_point_sol = ModelQueryUtilities.query_optimal_solution(
-                model, SolverStage.MODEL_SCALING).point_solution()
+                model, raise_error_if_infeasible=True, 
+                solver_stage=SolverStage.MODEL_SCALING).point_solution()
             # minimize
             model.setAttr("ModelSense", 1)
             model.optimize()
             min_point_sol = ModelQueryUtilities.query_optimal_solution(
-                model, SolverStage.MODEL_SCALING).point_solution()
+                model, raise_error_if_infeasible=True, 
+                solver_stage=SolverStage.MODEL_SCALING).point_solution()
             obj_name = model.getAttr("ObjNName")
             self._objective_name_2_range[obj_name] = ObjectiveRange(max_point_sol, min_point_sol)
             
@@ -201,6 +208,7 @@ class GurobiMomilpModel(AbstractModel):
             model.setParam("ObjNumber", obj_index)
             priority = model.getAttr("ObjNPriority")
             objective_index_and_priorities.append((obj_index, priority))
+            self._objective_index_2_priority[obj_index] = priority
         unique_priority_values = set(priority for (_, priority) in objective_index_and_priorities)
         if len(unique_priority_values) < model_num_obj:
             message = "The model objective functions must have different priorities, '%s" % unique_priority_values
@@ -240,6 +248,7 @@ class GurobiMomilpModel(AbstractModel):
             self._region_defining_constraint_names.append(name)
         if tabu_constraint:
             self._tabu_constraint_names.append(name)
+        self._model.update()
         return constraint
 
     def binary(self):
@@ -256,19 +265,23 @@ class GurobiMomilpModel(AbstractModel):
         for obj_num, priority in obj_num_2_priority:
             model.setParam("ObjNumber", obj_num)
             priority = model.setAttr("ObjNPriority", priority)
+        model.update()
 
     def constraint_name_2_constraint(self):
         """Returns the constraint name to constraint"""
         return self._constraint_name_2_constraint
     
-    def copy_problem(self):
-        return self._model.copy()
+    def copy(self):
+        model_copy = copy.copy(self)
+        model_copy._model = self._model.copy()
+        return model_copy
 
     def fix_integer_vector(self, y_bar):
         y = self._y
         for y_, y_bar_ in zip(y, y_bar):
             y_.setAttr("LB", y_bar_)
             y_.setAttr("UB", y_bar_)
+        self._model.update()
     
     def num_int_vars(self):
         return self._model.getAttr("NumIntVars")
@@ -278,6 +291,14 @@ class GurobiMomilpModel(AbstractModel):
 
     def objective(self, index):
         return self._model.getObjective(index=index)
+
+    def objective_index_2_name(self):
+        """Returns the dictionary of objective index to name"""
+        return self._objective_index_2_name
+
+    def objective_index_2_priority(self):
+        """Returns the dictionary of objective index to priority"""
+        return self._objective_index_2_priority
 
     def objective_name_2_range(self):
         """Returns the objective name to objective range"""
@@ -302,6 +323,7 @@ class GurobiMomilpModel(AbstractModel):
         # NOTE: I do not use 'model.relax()' here as it removes the references to the y-vector
         for y_ in self._y:
             y_.setAttr("VType", "C")
+        self._model.update()
 
     def remove_constraint(self, constraint_names):
         constraint_names = constraint_names if isinstance(constraint_names, list) else [constraint_names]
@@ -315,6 +337,7 @@ class GurobiMomilpModel(AbstractModel):
                 self._region_defining_constraint_names.remove(constraint_name)
             if constraint_name in self._tabu_constraint_names:
                 self._tabu_constraint_names.remove(constraint_name)
+        self._model.update()
 
     def restore_original_bounds_of_integer_variables(self):
         """Removes the posteriori-added bounds on the y-vector if there exist any"""
@@ -322,6 +345,7 @@ class GurobiMomilpModel(AbstractModel):
         for y_ in y:
             y_.setAttr("LB", self._int_var_2_original_lb_and_ub[y_][0])
             y_.setAttr("UB", self._int_var_2_original_lb_and_ub[y_][1])
+        self._model.update()
 
     def solve(self):
         self._model.optimize()
@@ -329,6 +353,10 @@ class GurobiMomilpModel(AbstractModel):
     def tabu_constraint_names(self):
         """Returns the tabu constraint names"""
         return self._tabu_constraint_names
+
+    def tabu_constraints(self):
+        """Returns the tabu constraints"""
+        return [self._constraint_name_2_constraint[constraint_name] for constraint_name in self._tabu_constraint_names]
 
     def update_constraint(self, name):
         pass

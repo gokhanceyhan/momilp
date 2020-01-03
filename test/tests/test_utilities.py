@@ -7,7 +7,7 @@ from src.common.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension
     PointInTwoDimension, RayInTwoDimension
 from src.momilp.model import GurobiMomilpModel
 from src.momilp.utilities import ConstraintGenerationUtilities
-from unittest import TestCase
+from unittest import main, TestCase
 
 class ConstraintGenerationUtilitiesTest(TestCase):
 
@@ -86,3 +86,7 @@ class ConstraintGenerationUtilitiesTest(TestCase):
         self.assert_that(constraints, has_length(2))
         self.assert_that(round(constraints[0].rhs, 2), is_(6.50))
         self.assert_that(round(constraints[1].rhs, 2), is_(6.00))
+
+
+if __name__ == '__main__':
+    main()

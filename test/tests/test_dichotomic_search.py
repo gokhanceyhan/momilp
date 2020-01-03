@@ -5,7 +5,7 @@ from hamcrest import assert_that, has_length, is_
 import os
 from src.common.elements import PointInTwoDimension
 from src.molp.dichotomic_search.solver import BolpDichotomicSearchWithGurobiSolver
-from unittest import TestCase
+from unittest import main, TestCase
 
 
 class BolpDichotomicSearchTest(TestCase):
@@ -29,3 +29,7 @@ class BolpDichotomicSearchTest(TestCase):
         self.assert_that(first_point, is_(PointInTwoDimension([81, 96])))
         last_point = extreme_supported_nondominated_points[-1]
         self.assert_that(last_point, is_(PointInTwoDimension([120, 17])))
+
+
+if __name__ == '__main__':
+    main()
