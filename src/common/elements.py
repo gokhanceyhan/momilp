@@ -3,6 +3,7 @@
 import abc
 from enum import Enum
 import math
+import numpy as np
 
 
 class ConvexConeInPositiveQuadrant:
@@ -70,12 +71,25 @@ class EdgeInTwoDimension(Edge):
     def __init__(self, left_point, right_point, left_inclusive=True, right_inclusive=True, z3=0):
         super(EdgeInTwoDimension, self).__init__(
             left_point, right_point, end_inclusive=right_inclusive, start_inclusive=left_inclusive)
+        self._edge_value = None
         self._left_inclusive = left_inclusive
         self._left_point = left_point
+        self._normal_vector = None
         self._right_inclusive = right_inclusive
         self._right_point = right_point
         self._z3 = z3
         self._validate()
+        self._set_normal_vector()
+        self._set_edge_value()
+
+    def _set_edge_value(self):
+        """Sets the edge value"""
+        self._edge_value = np.dot(self._normal_vector, self._left_point.values())
+
+    def _set_normal_vector(self):
+        """Sets the normal vector of the edge"""
+        self._normal_vector = [
+            self._left_point.z2() - self._right_point.z2(), self._right_point.z1() - self._left_point.z1()]
 
     def _validate(self):
         """Validates the edge in two-dimensional space"""
@@ -87,6 +101,10 @@ class EdgeInTwoDimension(Edge):
         """Returns True if both extreme points are inclusive"""
         return self._left_inclusive and self._right_inclusive
 
+    def edge_value(self):
+        """Returns the edge value"""
+        return self._edge_value
+
     def left_inclusive(self):
         """Returns True if the left point is inclusive"""
         return self._left_inclusive
@@ -94,6 +112,10 @@ class EdgeInTwoDimension(Edge):
     def left_point(self):
         """Returns the left point"""
         return self._left_point
+
+    def normal_vector(self):
+        """Returns the normal vector of the edge"""
+        return self._normal_vector
 
     def right_inclusive(self):
         """Returns True if the right point is inclusive"""
@@ -133,6 +155,16 @@ class EdgeSolution(Solution):
         return self._edge
 
 
+class FrontierEdgeInTwoDimension(EdgeInTwoDimension):
+
+    """Implements edge of nondominated frontier in two-dimensional space"""
+
+    def _validate(self):
+        if self._left_point.z1() < self._right_point.z1() and self._left_point.z2() > self._right_point.z2():
+            return
+        raise ValueError("the edge cannot be a part of a nondominated frontier")
+
+
 class FrontierInTwoDimension:
 
     """Implements frontier in two-dimensional space"""
@@ -166,12 +198,12 @@ class FrontierInTwoDimension:
         if not all([edge.z3() == z3 for edge in edges]):
             raise ValueError(FrontierInTwoDimension._ELEMENTS_IN_DIFFERENT_DIMENSIONS_ERROR_MESSAGE)
         for index, edge in enumerate(edges):
-            if index < len(edges) - 1 and not edge.right_point() != edges[index + 1].left_point() or \
-                    index > 0 and not edge.left_point() != edges[index-1].right_point():
+            if index < len(edges) - 1 and edge.right_point() != edges[index + 1].left_point() or \
+                    index > 0 and edge.left_point() != edges[index-1].right_point():
                 raise ValueError(FrontierInTwoDimension._DISCONNECTED_EDGES_ERROR_MESSAGE)
 
     def edges(self):
-        """Returns the edges in the frontier"""
+        """Returns the edges in the frontier (sorted in non-increasing values of z1 (x-axis), from left to right)"""
         return self._edges
 
     def point(self):
@@ -181,16 +213,6 @@ class FrontierInTwoDimension:
     def singleton(self):
         """Returns True if the frontier is a singleton, otherwise False"""
         return self._point and not self._edges 
-
-
-class FrontierEdgeInTwoDimension(EdgeInTwoDimension):
-
-    """Implements edge of nondominated frontier in two-dimensional space"""
-
-    def _validate(self):
-        if self._left_point.z1() < self._right_point.z1() and self._left_point.z2() > self._right_point.z2():
-            return
-        raise ValueError("the edge cannot be a part of a nondominated frontier")
 
 
 class FrontierSolution(Solution):
