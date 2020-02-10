@@ -1,7 +1,8 @@
 """Checks the dominance of a set of points, and eliminates the dominated points"""
 
+from enum import Enum
 import numpy as np
-from gurobipy import GRB
+from gurobipy import GRB, Model, QuadExpr
 from src.common.elements import EdgeInTwoDimension, FrontierInTwoDimension, Point, PointInTwoDimension
 from src.molp.utilities import ModelQueryUtilities as molp_query_utilities
 from src.momilp.utilities import ConstraintGenerationUtilities
@@ -11,167 +12,159 @@ class DominanceModel:
 
     """Implements model to check the dominance of a point or an edge"""
 
+    class ConstraintKind(Enum):
+
+        """Represents the kind of constraints in the dominance model"""
+
+        CHECKED_ELEMENT = 0
+        DOMINATED_SPACE = 1
+
     _CHECKED_ELEMENT_CONSTRAINTS_NAME = "checked_element"
     _DOMINATED_SPACE_CONSTRAINTS_NAME = "dominated_space"
 
-    def __init__(self, momilp_model, primary_objective_index, projected_space_criterion_index_2_criterion_index):
-        assert momilp_model.num_obj() == 3, "only three objective problems are supported currently"
-        self._momilp_model = momilp_model
-        self._num_constraints_for_checked_element = 0
-        self._num_constraints_for_dominated_space = 0
-        self._primary_objective_index = primary_objective_index
-        self._projected_space_criterion_index_2_criterion_index = projected_space_criterion_index_2_criterion_index
+    def __init__(self, num_objectives):
+        assert num_objectives == 2, "only two objective problems are supported currently"
+        self._constraints_for_checked_element = []
+        self._constraints_for_dominated_space = []
+        self._model = None
+        self._num_objectives = num_objectives
+        self._objective_variables = []
+        self._create_model()
 
-    def _projected_space_criterion_index_2_objective_variable(self, projected_space_criterion_index):
-        """Returns the objective variable at the specified projected space criterion index"""
-        objective_index = self._projected_space_criterion_index_2_criterion_index[projected_space_criterion_index]
-        objective_name = self._momilp_model.objective_index_2_name()[objective_index]
-        return self._momilp_model.Z()[objective_name]
+    def _add_constraint(self, kind, lhs, rhs, sense):
+        """Adds constraint to the model"""
+        try:
+            assert not isinstance(lhs, QuadExpr)
+            assert not isinstance(rhs, QuadExpr)
+        except AssertionError as error:
+            message = "The constraint left-hand-side '%s' cannot be added to the linear model '%s'" % (
+                lhs, self._model.getAttr("ModelName"))
+            raise RuntimeError(message) from error
+        if kind == DominanceModel.ConstraintKind.DOMINATED_SPACE:
+            name = "_".join(
+                [DominanceModel._DOMINATED_SPACE_CONSTRAINTS_NAME, str(len(self._constraints_for_dominated_space))])
+            constraint = self._model.addLConstr(lhs, sense=sense, rhs=rhs, name=name)
+            self._constraints_for_dominated_space.append(constraint)
+        elif kind == DominanceModel.ConstraintKind.CHECKED_ELEMENT:
+            name = "_".join(
+                [DominanceModel._CHECKED_ELEMENT_CONSTRAINTS_NAME, str(len(self._constraints_for_checked_element))])
+            constraint = self._model.addLConstr(lhs, sense=sense, rhs=rhs, name=name)
+            self._constraints_for_checked_element.append(constraint)
+        self._model.update()
+        return constraint
 
-    def add_dominated_space_constraints(self, frontier, primary_objective_value):
-        """Adds the constraints to the momilp model that define the dominated space by the frontier in two dimension
-        
-        NOTE: The frontier must be in two-dimensional projected objective space"""
-        assert isinstance(frontier, FrontierInTwoDimension), \
-            "the frontier must be an instance of 'FrontierInTwoDimension'"
-        momilp_model = self._momilp_model
+    def _create_constraint_for_dominated_space_by_edge(self, edge):
+        """Creates and adds the constraint to the model for the given edge, returns the constraint"""
+        left_point = edge.left_point()
+        right_point = edge.right_point()
+        x_var = self._objective_variables[0]
+        y_var = self._objective_variables[1]
+        sense = GRB.LESS_EQUAL
+        kind = DominanceModel.ConstraintKind.DOMINATED_SPACE
+        if (left_point.z1() - right_point.z1()) == 0:
+            return self._add_constraint(kind, x_var, left_point.z1(), sense)
+        m = (left_point.z2() - right_point.z2()) / (left_point.z1() - right_point.z1())
+        x_coeff = -1 * m
+        y_coeff = 1.0
+        lhs = x_coeff * x_var + y_coeff * y_var   
+        rhs = left_point.z2() - m * left_point.z1()
+        return self._add_constraint(kind, lhs, rhs, sense)
+
+    def _create_model(self):
+        """Creates the model"""
+        model = Model("dominance_model")
+        model.setAttr("ModelSense", GRB.MAXIMIZE)
+        num_objectives = self._num_objectives
+        z = model.addVars(num_objectives, name="z")
+        for i in range(num_objectives):
+            model.setObjectiveN(z[i], i, priority=num_objectives - i)
+        self._model = model
+        self._objective_variables = z.values()
+
+    def add_dominated_space_constraints(self, frontier):
+        """Adds the constraints to the model that define the dominated space by the frontier"""
+        kind = DominanceModel.ConstraintKind.DOMINATED_SPACE
         if frontier.singleton():
             point = frontier.point()
             for index, value in enumerate(point.values()):
-                objective_variable = self._projected_space_criterion_index_2_objective_variable(index)
-                constraint_name = "_".join(
-                    [DominanceModel._DOMINATED_SPACE_CONSTRAINTS_NAME, self._num_constraints_for_dominated_space])
-                momilp_model.add_constraint(objective_variable, constraint_name, value, GRB.LESS_EQUAL)
-                self._num_constraints_for_dominated_space =+ 1
+                objective_variable = self._objective_variables[index]
+                self._add_constraint(kind, objective_variable, value, GRB.LESS_EQUAL)
             return
         edges = frontier.edges()
         # first create the constraints that define the dominated space in the two-dimension
-        north_west_point = edges[0].left_point()
-        # put a constraint on the objective at the second index of the projected space
-        criterion_index = 1
-        objective_variable = self._projected_space_criterion_index_2_objective_variable(criterion_index)
-        constraint_name = "_".join(
-            [DominanceModel._DOMINATED_SPACE_CONSTRAINTS_NAME, self._num_constraints_for_dominated_space])
-        momilp_model.add_constraint(
-            objective_variable, constraint_name, north_west_point.values()[criterion_index], GRB.LESS_EQUAL)
-        self._num_constraints_for_dominated_space =+ 1
+        # put a constraint on the first objective
         south_east_point = edges[-1].right_point()
-        # put a constraint on the objective at the first index of the projected space
         criterion_index = 0        
-        objective_variable = self._projected_space_criterion_index_2_objective_variable(criterion_index)
-        constraint_name = "_".join(
-            [DominanceModel._DOMINATED_SPACE_CONSTRAINTS_NAME, self._num_constraints_for_dominated_space])
-        momilp_model.add_constraint(
-            objective_variable, constraint_name, south_east_point.values()[criterion_index], GRB.LESS_EQUAL)
-        self._num_constraints_for_dominated_space =+ 1
+        objective_variable = self._objective_variables[criterion_index]
+        self._add_constraint(
+            kind, objective_variable, south_east_point.values()[criterion_index], GRB.LESS_EQUAL)
+        # put a constraint on the second objective
+        north_west_point = edges[0].left_point()
+        criterion_index = 1
+        objective_variable = self._objective_variables[criterion_index]
+        self._add_constraint(
+            kind, objective_variable, north_west_point.values()[criterion_index], GRB.LESS_EQUAL)
         # put constraints for the left half-spaces defined by the edges
         for edge in edges:
-            x_var = self._projected_space_criterion_index_2_objective_variable(0)
-            y_var = self._projected_space_criterion_index_2_objective_variable(1)
-            constraint_name = "_".join(
-                [DominanceModel._DOMINATED_SPACE_CONSTRAINTS_NAME, self._num_constraints_for_dominated_space])
-            ConstraintGenerationUtilities.create_constraint_for_edge_in_two_dimension(
-                momilp_model, edge, x_var, y_var, name=constraint_name, sense=GRB.LESS_EQUAL)
-            self._num_constraints_for_dominated_space += 1
-        # add a constraint for the primary objective index
-        objective_name = momilp_model.objective_index_2_name()[self._primary_objective_index]
-        objective_variable = momilp_model.objective_name_2_variable()[objective_name]
-        constraint_name = "_".join(
-            [DominanceModel._DOMINATED_SPACE_CONSTRAINTS_NAME, self._num_constraints_for_dominated_space])
-        momilp_model.add_constraint(objective_variable, constraint_name, primary_objective_value, GRB.LESS_EQUAL)
-        momilp_model.update_model()
+            constraint = self._create_constraint_for_dominated_space_by_edge(edge)
+            self._constraints_for_dominated_space.append(constraint)
 
     def add_edge_constraint(self, edge):
         """Adds the constraint to restrict the feasible space to the given edge"""
-        momilp_model = self._momilp_model
-        # first fix the value in the primary objective index
-        objective_value = edge.z3()
-        objective_name = momilp_model.objective_index_2_name()[self._primary_objective_index]
-        primary_objective_variable = momilp_model.objective_name_2_variable()[objective_name]
-        constraint_name = "_".join(
-            [DominanceModel._CHECKED_ELEMENT_CONSTRAINTS_NAME, self._num_constraints_for_checked_element])
-        momilp_model.add_constraint(primary_objective_variable, constraint_name, objective_value, GRB.EQUAL)
-        self._num_constraints_for_checked_element += 1
+        kind = DominanceModel.ConstraintKind.CHECKED_ELEMENT
         # restrict the feasible space to the edge
         left_point = edge.left_point()
         right_point = edge.right_point()
-        lambda_var = momilp_model.addVar(name="lambda", ub=1.0)
+        lambda_var = self._model.addVar(name="lambda", ub=1.0)
         # add the convex combination constraint for each criterion
-        z1_var = self._projected_space_criterion_index_2_objective_variable(0)
-        constraint_name = "_".join(
-            [DominanceModel._CHECKED_ELEMENT_CONSTRAINTS_NAME, self._num_constraints_for_checked_element])
-        momilp_model.add_constraint(
-            z1_var - lambda_var * (right_point.z1() - left_point.z1()), constraint_name, right_point.z1(), GRB.EQUAL)
-        self._num_constraints_for_checked_element += 1
-        z2_var = self._projected_space_criterion_index_2_objective_variable(1)
-        constraint_name = "_".join(
-            [DominanceModel._CHECKED_ELEMENT_CONSTRAINTS_NAME, self._num_constraints_for_checked_element])
-        momilp_model.add_constraint(
-            z2_var - lambda_var * (right_point.z2() - left_point.z2()), constraint_name, right_point.z2(), GRB.EQUAL)
-        self._num_constraints_for_checked_element += 1
-        if not isinstance(edge, EdgeInTwoDimension):
-            # then, we should also consider the third objective
-            z3_var = primary_objective_variable
-            constraint_name = "_".join(
-                [DominanceModel._CHECKED_ELEMENT_CONSTRAINTS_NAME, self._num_constraints_for_checked_element])
-            momilp_model.add_constraint(
-                z3_var - lambda_var * (right_point.z3() - left_point.z3()), constraint_name, right_point.z3(), 
-                GRB.EQUAL)
-            self._num_constraints_for_checked_element += 1
-        momilp_model.update_model()
+        for index, objective_variable in enumerate(self._objective_variables):
+            self._add_constraint(
+                kind, objective_variable + lambda_var * (right_point.values()[index] - left_point.values()[index]), 
+                right_point.values()[index], GRB.EQUAL)
 
     def add_point_constraint(self, point):
-        """Adds the constraint to restrict the feasible space to the given point
-        
-        NOTE: The given point is assumed to be in the original objective space (has the third dimension)"""
-        momilp_model = self._momilp_model
+        """Adds the constraint to restrict the feasible space to the given point"""
+        kind = DominanceModel.ConstraintKind.CHECKED_ELEMENT
         for index, value in enumerate(point.values()):
-            objective_name = momilp_model.objective_index_2_name()[index]
-            objective_variable = momilp_model.objective_name_2_variable()[objective_name]
-            constraint_name = "_".join(
-                [DominanceModel._CHECKED_ELEMENT_CONSTRAINTS_NAME, self._num_constraints_for_checked_element])
-            momilp_model.add_constraint(objective_variable, constraint_name, value, GRB.EQUAL)
-            self._num_constraints_for_dominated_space =+ 1
-        momilp_model.update_model()
-
-    def fix_integer_vector_of_compared_frontier(self, y_bar):
-        """Fixes the current value of the integer vector of the compared frontier in the momilp model"""
-        self._momilp_model.fix_integer_vector(y_bar)
-        self._momilp_model.update_model()
+            objective_variable = self._objective_variables[index]
+            self._add_constraint(kind, objective_variable, value, GRB.EQUAL)
 
     def remove_checked_element_constraints(self):
         """Removes the constraints that were added to restrict the feasible space to the element"""
-        num_constraints = self._num_constraints_for_checked_element
-        constraint_names = [
-            "_".join([DominanceModel._CHECKED_ELEMENT_CONSTRAINTS_NAME, i]) for i in range(num_constraints)]
-        self._momilp_model.remove_constraint(constraint_names)
-        self._num_constraints_for_checked_element = 0
+        self._model.remove(self._constraints_for_checked_element)
+        self._constraints_for_checked_element = []
 
     def remove_dominated_space_constraints(self):
         """Removes the constraints that were added to define the dominated space"""
-        num_constraints = self._num_constraints_for_dominated_space
-        constraint_names = [
-            "_".join([DominanceModel._DOMINATED_SPACE_CONSTRAINTS_NAME, i]) for i in range(num_constraints)]
-        self._momilp_model.remove_constraint(constraint_names)
-        self._num_constraints_for_dominated_space = 0
+        self._model.remove(self._constraints_for_dominated_space)
+        self._constraints_for_dominated_space = []
 
     def solve(self, objective_index=None):
         """Solves the model for the objective specified by the objective index, returns the point in the objective 
         space corresponding to the optimal solution
         
         NOTE: A lexicographic objective function is solved where the given objective index is assigned top priority"""
+        model = self._model
         if objective_index is not None:
-            objective_index_2_priority = self._momilp_model.objective_index_2_priority()
-            current_priority = objective_index_2_priority[objective_index]
-            index_with_top_priority = [
-                index for index, priority in objective_index_2_priority.items() if priority == 1][0]
-            # swap the priorities
-            objective_index_2_priority[objective_index] = 1
-            objective_index_2_priority[index_with_top_priority] = current_priority
+            model.setParam("ObjNumber", objective_index)
+            current_priority = model.getAttr("ObjNPriority")
+            top_priority = self._num_objectives
+            if current_priority != top_priority:
+                index_with_top_priority = None
+                for index in range(self._num_objectives):
+                    model.setParam("ObjNumber", index)
+                    priority = model.getAttr("ObjNPriority")
+                    if priority == top_priority:
+                        index_with_top_priority = index
+                        break
+                # swap the priorities
+                model.setParam("ObjNumber", objective_index)
+                model.setAttr("ObjNPriority", top_priority)
+                model.setParam("ObjNumber", index_with_top_priority)
+                model.setAttr("ObjNPriority", current_priority)
         # solve
-        self._momilp_model.solve()
-        values, status = molp_query_utilities.query_optimal_objective_values(
-            self._momilp_model.problem(), raise_error_if_infeasible=False)
+        model.optimize()
+        values, status = molp_query_utilities.query_optimal_objective_values(model, raise_error_if_infeasible=False)
         return Point(values) if status != GRB.INFEASIBLE else None
 
 
@@ -322,12 +315,13 @@ class ModelBasedDominanceFilter:
 
     """Filters the points that are relatively nondominated with respect to the points or edges checked against"""
 
-    def __init__(self, dominance_model):
-        self._dominance_model = dominance_model
+    def __init__(self, num_objectives):
+        assert num_objectives == 2, "only two objective problems are supported currently"
+        self._dominance_model = DominanceModel(num_objectives)
 
-    def _solve_model(self, criterion_index):
+    def _solve_model(self, objective_index=None):
         """Maximizes the selected criterion in the model, and returns the point corresponding to the optimal solution"""
-        return self._dominance_model.solve(criterion_index)
+        return self._dominance_model.solve(objective_index=objective_index)
 
     def _reset_model(self):
         """Removes the constraints related to a previous dominance check if there exist any"""
@@ -335,23 +329,51 @@ class ModelBasedDominanceFilter:
         self._dominance_model.remove_checked_element_constraints()
 
     def filter_edge(self, edge):
-        """Filters the dominated points in the edge, and returns the updated edge"""
+        """Filters the dominated points in the edge, and returns the updated edges"""
         self._dominance_model.add_edge_constraint(edge)
         # solve for z1
+        z1_objective_index = 0
+        point_z_1_star = self._solve_model(objective_index=z1_objective_index)
+        if point_z_1_star is None:
+            # the model is infeasible meaning that the edge is nondominated
+            return [edge]
         # solve for z2
-        self._dominance_model.remove_checked_element_constraints()
+        z2_objective_index = 1
+        point_z_2_star = self._solve_model(objective_index=z2_objective_index)
+        # MOMILP_TO_DO: Check if a point of the edge is on the boundary of the dominated space
+        if point_z_1_star.values()[z1_objective_index] == edge.right_point().values()[z1_objective_index]:
+            if point_z_2_star.values()[z2_objective_index] == edge.left_point().values()[z2_objective_index]:
+                # the edge is dominated
+                return []
+            else:
+                # the edge is partially nondominated
+                values_on_the_boundary = [
+                    point_z_2_star.values()[z1_objective_index], point_z_2_star.values()[z2_objective_index]]
+                right_point = PointInTwoDimension(values_on_the_boundary)
+                return [EdgeInTwoDimension(edge.left_point(), right_point, right_inclusive=False, z3=edge.z3())]
+        else:
+            if point_z_2_star.values()[z2_objective_index] == edge.left_point().values()[z2_objective_index]:
+                values_on_the_boundary = [
+                    point_z_1_star.values()[z1_objective_index], point_z_1_star.values()[z2_objective_index]]
+                left_point = PointInTwoDimension(values_on_the_boundary)
+                return [EdgeInTwoDimension(left_point, edge.right_point(), left_inclusive=False, z3=edge.z3())]
+            else:
+                inner_left_point = PointInTwoDimension(
+                    [point_z_2_star.values()[z1_objective_index], point_z_2_star.values()[z2_objective_index]])
+                inner_right_point = PointInTwoDimension(
+                    [point_z_1_star.values()[z1_objective_index], point_z_1_star.values()[z2_objective_index]])
+                return [
+                    EdgeInTwoDimension(edge.left_point(), inner_left_point, right_inclusive=False, z3=edge.z3()), 
+                    EdgeInTwoDimension(inner_right_point, edge.right_point(), left_inclusive=False, z3=edge.z3())]
 
     def filter_point(self, point):
         """Returns the point if it is not dominated, otherwise None"""
         self._dominance_model.add_point_constraint(point)
-        return self._dominance_model.solve()
+        return self._solve_model()
 
-    def set_dominated_space(self, frontier_solution, primary_objective_value, reset=True):
+    def set_dominated_space(self, frontier, reset=True):
         """Sets the dominated space in the model"""
         if reset:
             self._reset_model()
         dominance_model = self._dominance_model
-        y_bar = frontier_solution.y_bar()
-        dominance_model.fix_integer_vector_of_compared_frontier(y_bar)
-        frontier = frontier_solution.frontier()
-        dominance_model.add_dominated_space_constraints(frontier, primary_objective_value)
+        dominance_model.add_dominated_space_constraints(frontier)

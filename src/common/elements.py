@@ -40,7 +40,7 @@ class ConvexConeInPositiveQuadrant:
 class Edge:
 
     """Implements edge in the space of the momilp problem"""
-
+    
     def __init__(self, start_point, end_point, end_inclusive=True, start_inclusive=True):
         self._end_inclusive = end_inclusive
         self._end_point = end_point

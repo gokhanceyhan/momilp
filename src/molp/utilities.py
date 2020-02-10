@@ -22,4 +22,4 @@ class ModelQueryUtilities:
             raise RuntimeError(message)
         for i in range(model.getAttr("NumObj")):
             values.append(model.getObjective(index=i).getValue())
-        return values
+        return values, status

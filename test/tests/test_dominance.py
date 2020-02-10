@@ -1,13 +1,15 @@
 """Implements tests for dominance"""
 
-from hamcrest import assert_that
+from hamcrest import assert_that, has_length, is_
+import os
 from src.common.elements import Edge, EdgeInTwoDimension, FrontierEdgeInTwoDimension, FrontierInTwoDimension, Point, \
     PointInTwoDimension
-from src.momilp.dominance import DominanceRules
+from src.momilp.dominance import DominanceRules, ModelBasedDominanceFilter
+from src.momilp.model import GurobiMomilpModel
 from unittest import main, TestCase
 
 
-class TestDominanceRules(TestCase):
+class DominanceRulesTest(TestCase):
 
     """Implements tests for the dominance rules"""
 
@@ -189,6 +191,85 @@ class TestDominanceRules(TestCase):
         self.assert_that(not DominanceRules.PointToPoint.dominated(base_point, compared_point))
         compared_point = Point([11, 10, 9])
         self.assert_that(not DominanceRules.PointToPoint.dominated(base_point, compared_point))
+
+
+class ModelBasedDominanceFilterTest(TestCase):
+
+    """Implements tests for the model-based dominance filter test"""
+
+    def setUp(self):
+        self._test_data_dir = os.path.join(os.environ["PYTHON_TEST_PATH"], "data")
+        self._filter = ModelBasedDominanceFilter(2)
+        self.assert_that = assert_that
+
+    def test_edge_dominated_by_edge(self):
+        """Tests a scenario where an edge is dominated by a point"""
+        first_edge = EdgeInTwoDimension(PointInTwoDimension([1, 5]), PointInTwoDimension([5, 1]))
+        second_edge = FrontierEdgeInTwoDimension(PointInTwoDimension([2, 6]), PointInTwoDimension([6, 2]))
+        frontier = FrontierInTwoDimension(edges=[second_edge])
+        self._filter.set_dominated_space(frontier)
+        filtered_edges = self._filter.filter_edge(first_edge)
+        self.assert_that(filtered_edges, has_length(0))
+
+    def test_edge_dominated_by_point(self):
+        """Tests a scenario where an edge is dominated by a point"""
+        edge = EdgeInTwoDimension(PointInTwoDimension([1, 5]), PointInTwoDimension([5, 1]))
+        point = PointInTwoDimension([6, 6])
+        frontier = FrontierInTwoDimension(point=point)
+        self._filter.set_dominated_space(frontier)
+        filtered_edges = self._filter.filter_edge(edge)
+        self.assert_that(filtered_edges, has_length(0))
+
+    def test_edge_nondominated_relative_to_edge(self):
+        """Tests a scenario where an edge is nondominated relative to an edge"""
+        first_edge = EdgeInTwoDimension(PointInTwoDimension([2, 4]), PointInTwoDimension([4, 2]))
+        second_edge = FrontierEdgeInTwoDimension(PointInTwoDimension([5, 1]), PointInTwoDimension([6, 0]))
+        frontier = FrontierInTwoDimension(edges=[second_edge])
+        self._filter.set_dominated_space(frontier)
+        filtered_edges = self._filter.filter_edge(first_edge)
+        self.assert_that(filtered_edges, has_length(1))
+        filtered_edge = filtered_edges[0]
+        self.assert_that(filtered_edge.left_point(), is_(first_edge.left_point()))
+        self.assert_that(filtered_edge.right_point(), is_(first_edge.right_point()))
+
+    def test_edge_nondominated_relative_to_point(self):
+        """Tests a scenario where an edge is nondominated relative to a point"""
+        edge = EdgeInTwoDimension(PointInTwoDimension([3, 5]), PointInTwoDimension([5, 3]))
+        point = PointInTwoDimension([6, 2])
+        frontier = FrontierInTwoDimension(point=point)
+        self._filter.set_dominated_space(frontier)
+        filtered_edges = self._filter.filter_edge(edge)
+        self.assert_that(filtered_edges, has_length(1))
+        filtered_edge = filtered_edges[0]
+        self.assert_that(filtered_edge.left_point(), is_(edge.left_point()))
+        self.assert_that(filtered_edge.right_point(), is_(edge.right_point()))
+
+    def test_edge_partially_nondominated_relative_to_edge(self):
+        """Tests a scenario where an edge is partially nondominated relative to an edge"""
+        first_edge = EdgeInTwoDimension(PointInTwoDimension([1, 4]), PointInTwoDimension([5, 1]))
+        second_edge = FrontierEdgeInTwoDimension(PointInTwoDimension([3, 4]), PointInTwoDimension([4, 3]))
+        frontier = FrontierInTwoDimension(edges=[second_edge])
+        self._filter.set_dominated_space(frontier)
+        filtered_edges = self._filter.filter_edge(first_edge)
+        self.assert_that(filtered_edges, has_length(1))
+        self.assert_that(filtered_edges[0].left_point(), is_(PointInTwoDimension([4, 1.75])))
+        self.assert_that(filtered_edges[0].right_point(), is_(PointInTwoDimension([5, 1])))
+        self.assert_that(filtered_edges[0].left_inclusive(), is_(False))
+
+    def test_edge_partially_nondominated_relative_to_point(self):
+        """Tests a scenario where an edge is partially nondominated relative to a point"""
+        edge = EdgeInTwoDimension(PointInTwoDimension([1, 5]), PointInTwoDimension([5, 1]))
+        point = PointInTwoDimension([4, 4])
+        frontier = FrontierInTwoDimension(point=point)
+        self._filter.set_dominated_space(frontier)
+        filtered_edges = self._filter.filter_edge(edge)
+        self.assert_that(filtered_edges, has_length(2))
+        self.assert_that(filtered_edges[0].left_point(), is_(PointInTwoDimension([1,5])))
+        self.assert_that(filtered_edges[0].right_point(), is_(PointInTwoDimension([2,4])))
+        self.assert_that(filtered_edges[0].right_inclusive(), is_(False))
+        self.assert_that(filtered_edges[1].left_point(), is_(PointInTwoDimension([4,2])))
+        self.assert_that(filtered_edges[1].right_point(), is_(PointInTwoDimension([5,1])))
+        self.assert_that(filtered_edges[1].left_inclusive(), is_(False))
 
 
 if __name__ == '__main__':
