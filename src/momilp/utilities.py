@@ -5,9 +5,9 @@ import math
 import operator
 import os
 import pandas as pd
-from src.common.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension, FrontierInTwoDimension, \
-    LowerBoundInTwoDimension, OptimizationStatus, Point, PointInTwoDimension, PointSolution, RayInTwoDimension, \
-    SearchProblemResult, SearchRegionInTwoDimension
+from src.common.elements import point_on_ray_in_two_dimension, ConvexConeInPositiveQuadrant, Edge, EdgeInTwoDimension, \
+    FrontierInTwoDimension, LowerBoundInTwoDimension, OptimizationStatus, Point, PointInTwoDimension, PointSolution, \
+    RayInTwoDimension, SearchProblemResult, SearchRegionInTwoDimension
 
 
 class ConstraintGenerationUtilities:
@@ -234,28 +234,108 @@ class SearchUtilities:
         regions = []
         if frontier.point():
             point = frontier.point()
-            # left cone
-            left_extreme_ray = region.cone().left_extreme_ray()
-            right_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, point)
-            cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
-            bounds = [initial_lb[0], point.z2() + lower_bound_delta]
-            lb = LowerBoundInTwoDimension(bounds)
-            regions.append(SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb))
-            # right cone
-            right_extreme_ray = region.cone().right_extreme_ray()
-            left_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, point)
-            cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
-            bounds = [point.z1() + lower_bound_delta, initial_lb[1]]
-            lb = LowerBoundInTwoDimension(bounds)
-            regions.append(SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb))
+            # only update the bounds of the region if the point is on the boundary of the convex cone
+            if point_on_ray_in_two_dimension(point, region.cone().left_extreme_ray()):
+                left_extreme_ray = region.cone().left_extreme_ray()
+                right_extreme_ray = region.cone().right_extreme_ray()
+                cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
+                bounds = [point.z1() + lower_bound_delta, initial_lb[1]]
+                lb = LowerBoundInTwoDimension(bounds)
+                regions.append(
+                    SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb))
+            elif point_on_ray_in_two_dimension(point, region.cone().right_extreme_ray()):
+                left_extreme_ray = region.cone().left_extreme_ray()
+                right_extreme_ray = region.cone().right_extreme_ray()
+                cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
+                bounds = [initial_lb[0], point.z2() + lower_bound_delta]
+                lb = LowerBoundInTwoDimension(bounds)
+                regions.append(
+                    SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb))
+            else:
+                # left cone
+                left_extreme_ray = region.cone().left_extreme_ray()
+                right_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, point)
+                cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
+                bounds = [initial_lb[0], point.z2() + lower_bound_delta]
+                lb = LowerBoundInTwoDimension(bounds)
+                regions.append(
+                    SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb))
+                # right cone
+                right_extreme_ray = region.cone().right_extreme_ray()
+                left_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, point)
+                cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
+                bounds = [point.z1() + lower_bound_delta, initial_lb[1]]
+                lb = LowerBoundInTwoDimension(bounds)
+                regions.append(
+                    SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb))
             return regions
-        for index, edge in enumerate(frontier.edges()):
-            left_extreme_ray = region.cone().left_extreme_ray() if index == 0 else \
-                SearchUtilities.create_ray_in_two_dimension(origin, edge.left_point())
-            right_extreme_ray = region.cone().right_extreme_ray() if index == len(frontier.edges()) - 1 else \
-                SearchUtilities.create_ray_in_two_dimension(origin, edge.right_point())
+        # add a region for the left-most region if the left-most point is not on the left extreme ray of the region
+        left_most_point = frontier.edges()[0].left_point()
+        if not point_on_ray_in_two_dimension(left_most_point, region.cone().left_extreme_ray()):
+            left_most_region = SearchRegionInTwoDimension(
+                x_obj_name, y_obj_name, ConvexConeInPositiveQuadrant(
+                    [region.cone().left_extreme_ray(), 
+                    SearchUtilities.create_ray_in_two_dimension(origin, left_most_point)]), 
+                lower_bound=LowerBoundInTwoDimension([initial_lb[0], left_most_point.z2() + lower_bound_delta]))
+            regions.append(left_most_region)
+        # add the corresponding region for each edge in the frontier
+        for edge in frontier.edges():
+            left_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, edge.left_point())
+            right_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, edge.right_point())
             cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
             regions.append(
                 SearchRegionInTwoDimension(
                     x_obj_name, y_obj_name, cone, edge=edge, lower_bound=LowerBoundInTwoDimension(initial_lb)))
+        # add a region for the right-most region
+        right_most_point = frontier.edges()[-1].right_point()
+        if not point_on_ray_in_two_dimension(right_most_point, region.cone().right_extreme_ray()):
+            right_most_region = SearchRegionInTwoDimension(
+                x_obj_name, y_obj_name, ConvexConeInPositiveQuadrant(
+                    [SearchUtilities.create_ray_in_two_dimension(origin, right_most_point), 
+                    region.cone().right_extreme_ray()]), 
+                lower_bound=LowerBoundInTwoDimension([right_most_point.z1() + lower_bound_delta, initial_lb[1]]))
+            regions.append(right_most_region)
         return regions
+
+
+class TypeConversionUtilities:
+
+    """Implements the utilities to convert types to each other"""
+
+    @staticmethod
+    def edge_in_two_dimension_to_edge(additional_dim_2_value, edge_in_two_dimension, projected_space_dim_2_dim):
+        """Returns an edge in the original search space from the edge in the projected search space"""
+        start_point = {
+            projected_space_dim_2_dim[index]: value for index, value in 
+            enumerate(edge_in_two_dimension.left_point().values())}
+        start_point.update(additional_dim_2_value)
+        start_point_values = [start_point[key] for key in sorted(start_point)]
+        end_point = {
+            projected_space_dim_2_dim[index]: value for index, value in 
+            enumerate(edge_in_two_dimension.right_point().values())}
+        end_point.update(additional_dim_2_value)
+        end_point_values = [end_point[key] for key in sorted(end_point)]
+        return Edge(Point(start_point_values), Point(end_point_values))
+
+    @staticmethod
+    def edge_to_edge_in_two_dimension(dimensions, edge):
+        """Converts the edge to the edge in two dimensional space of the specified dimensions"""
+        assert len(dimensions) == 2, "there must be two dimensions"
+        start_point_at_left = edge.start_point().values()[dimensions[0]] <= edge.end_point().values()[dimensions[0]]
+        left_point, right_point = (edge.start_point(), edge.end_point()) if start_point_at_left else \
+            (edge.end_point(), edge.start_point())
+        left_point_in_two_dimension = PointInTwoDimension(
+            [value for index, value in enumerate(left_point.values()) if index in dimensions])
+        right_point_in_two_dimension = PointInTwoDimension(
+            [value for index, value in enumerate(right_point.values()) if index in dimensions])
+        left_inclusive, right_inclusive = (edge.start_inclusive(), edge.end_inclusive()) if start_point_at_left else \
+            (edge.end_inclusive(), edge.start_inclusive())
+        return EdgeInTwoDimension(
+            left_point_in_two_dimension, right_point_in_two_dimension, left_inclusive=left_inclusive, 
+            right_inclusive=right_inclusive)
+
+    @staticmethod
+    def point_to_point_in_two_dimension(dimensions, point):
+        """Converts the point to point in two dimensional space of the specified dimensions"""
+        assert len(dimensions) == 2, "there must be two dimensions"
+        return PointInTwoDimension([value for index, value in enumerate(point.values()) if index in dimensions])

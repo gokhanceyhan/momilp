@@ -271,6 +271,24 @@ class ModelBasedDominanceFilterTest(TestCase):
         self.assert_that(filtered_edges[1].right_point(), is_(PointInTwoDimension([5,1])))
         self.assert_that(filtered_edges[1].left_inclusive(), is_(False))
 
+    def test_point_dominated_by_edge(self):
+        """Tests a scenario where a point is dominated by an edge"""
+        edge = FrontierEdgeInTwoDimension(PointInTwoDimension([1, 5]), PointInTwoDimension([5, 1]))
+        point = PointInTwoDimension([2, 2])
+        frontier = FrontierInTwoDimension(edges=[edge])
+        self._filter.set_dominated_space(frontier)
+        nondominated_point = self._filter.filter_point(point)
+        self.assert_that(nondominated_point, is_(None))
+
+    def test_point_nondominated_relative_to_edge(self):
+        """Tests a scenario where a point is nondominated relative to an edge"""
+        edge = FrontierEdgeInTwoDimension(PointInTwoDimension([1, 5]), PointInTwoDimension([5, 1]))
+        point = PointInTwoDimension([4, 4])
+        frontier = FrontierInTwoDimension(edges=[edge])
+        self._filter.set_dominated_space(frontier)
+        nondominated_point = self._filter.filter_point(point)
+        self.assert_that(nondominated_point, is_(PointInTwoDimension([4, 4])))
+
 
 if __name__ == '__main__':
     main()

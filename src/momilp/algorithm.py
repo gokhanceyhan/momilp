@@ -9,10 +9,11 @@ import os
 from src.common.elements import ConvexConeInPositiveQuadrant, Edge, EdgeInTwoDimension, EdgeSolution, \
     RayInTwoDimension, FrontierInTwoDimension, FrontierSolution, OptimizationStatus, Point, PointInTwoDimension, \
     PointSolution, SearchRegionInTwoDimension, SliceProblemResult
+from src.momilp.dominance import ModelBasedDominanceFilter
 from src.momilp.model import GurobiMomilpModel
 from src.momilp.search import SearchProblem, SearchSpace, SliceProblem
 from src.momilp.state import Iteration, SolutionState, State
-from src.momilp.utilities import PointComparisonUtilities, SearchUtilities
+from src.momilp.utilities import PointComparisonUtilities, SearchUtilities, TypeConversionUtilities
 
 
 class AbstractAlgorithm(metaclass=abc.ABCMeta):
@@ -81,6 +82,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
 
     def __init__(self, model_file, working_dir, discrete_objective_indices=None, explore_decision_space=False):
         self._discrete_objective_indices = discrete_objective_indices or []
+        self._dominance_filter = None
         self._errors = []
         self._explore_decision_space = explore_decision_space
         self._model_file = model_file
@@ -94,17 +96,11 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         self._working_dir = working_dir
         self._initialize()
 
-    def _convert_edge_in_projected_space_to_edge_original_space(self, edge):
+    def _convert_edge_in_projected_space_to_edge_in_original_space(self, edge):
         """Returns an edge in the original search space from the edge in the projected search space"""
-        start_point = {
-            self._projected_space_criterion_index_2_criterion_index[index]: value for index, value in 
-            enumerate(edge.left_point().values())}
-        start_point[self._primary_objective_index] = edge.z3()
-        end_point = {
-            self._projected_space_criterion_index_2_criterion_index[index]: value for index, value in 
-            enumerate(edge.right_point().values())}
-        end_point[self._primary_objective_index] = edge.z3()
-        return Edge(Point(list(start_point.values())), Point(end_point.values()))
+        additional_dim_2_value = {self._primary_objective_index: edge.z3()}
+        return TypeConversionUtilities.edge_in_two_dimension_to_edge(
+            additional_dim_2_value, edge, self._projected_space_criterion_index_2_criterion_index)
 
     def _create_momilp_model(self):
         """Creates and returns a momilp model"""
@@ -154,6 +150,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         # create the initial solution state
         solution_state = SolutionState()
         self._state = State(search_space, slice_problem, solution_state=solution_state)
+        # create the dominance filter that will be used to filter the dominated points of weakly nondominated sets
+        self._dominance_filter = ModelBasedDominanceFilter(momilp_model.num_obj() - 1)
     
     @staticmethod
     def _is_problem_feasible(problem):
@@ -213,13 +211,14 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
                     previous_selected_point_solution.point().values()[self._primary_objective_index]:
                 state.solution_state().move_weakly_nondominated_to_nondominated()
             else:
-                state.solution_state().filter_dominated_points_and_edges(frontier)
+                state.solution_state().filter_dominated_points_and_edges(
+                    self._dominance_filter, frontier, self._projected_space_criterion_index_2_criterion_index)
         if frontier.singleton():
             state.solution_state().add_nondominated_point(selected_point_solution)
         else:
             edges = frontier.edges()
             for edge in edges:
-                solution_edge = self._convert_edge_in_projected_space_to_edge_original_space(edge)
+                solution_edge = self._convert_edge_in_projected_space_to_edge_in_original_space(edge)
                 state.solution_state().add_weakly_nondominated_edge(
                     EdgeSolution(solution_edge, selected_point_solution.y_bar()))
 
@@ -247,7 +246,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             slice_problem_result = self._solve_slice_problem(
                 selected_point_solution, selected_search_problem.region(), iteration_index)
             frontier = slice_problem_result.frontier_solution().frontier()
-            y_bar = slice_problem_result.frontier_solution().y_bar()
+            y_bar = selected_point_solution.y_bar()
             # update the search space
             search_space.update_lower_bounds(
                 slice_problem_result.ideal_point(), selected_search_problem_index, delta=lower_bound_delta)
@@ -256,11 +255,12 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             # partition the selected search region
             selected_region = selected_search_problem.region()
             child_search_regions = SearchUtilities.partition_search_region_in_two_dimension(
-                frontier, selected_region, lower_bound_delta=lower_bound_delta)     
+                frontier, selected_region, lower_bound_delta=lower_bound_delta)
+            # add the integer vector to the list of tabu integer vectors
+            tabu_y_bars = selected_search_problem.tabu_y_bars()[:]
+            tabu_y_bars.append(y_bar)
             for child_index, region in enumerate(child_search_regions):
                 search_problem = SearchProblem(self._create_momilp_model())
-                tabu_y_bars = selected_search_problem.tabu_y_bars()[:]
-                tabu_y_bars.append(y_bar)
                 search_problem.update_model(region=region, tabu_y_bars=tabu_y_bars)
                 search_space.add_search_problem(search_problem, index=selected_search_problem_index + 1 + child_index)
             search_space.delete_search_problem(selected_search_problem_index)

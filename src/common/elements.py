@@ -6,6 +6,13 @@ import math
 import numpy as np
 
 
+def point_on_ray_in_two_dimension(point, ray, tol=1e-4):
+    """Returns True of the point is on the ray with the specified error tolerance, False otherwise"""
+    tan_of_ray = math.tan(math.radians(ray.angle_in_degrees())) if ray.angle_in_degrees() < 90 else float("inf")
+    tan_of_point = point.z2() / point.z1() if point.z1() else float("inf")
+    return math.isclose(tan_of_ray, tan_of_point, rel_tol=tol)
+
+
 class ConvexConeInPositiveQuadrant:
 
     """Implements convex cone in the positive quadrant of the two-dimensional space"""
@@ -13,6 +20,9 @@ class ConvexConeInPositiveQuadrant:
     def __init__(self, extreme_rays):
         self._extreme_rays = extreme_rays
         self._validate()
+
+    def __str__(self):
+        return "Cone: {%s, %s}" % (self._extreme_rays[0], self._extreme_rays[1])
 
     def _validate(self):
         """Validates the convex cone in the positive quadrant of the two-dimensional space"""
@@ -46,6 +56,11 @@ class Edge:
         self._end_point = end_point
         self._start_inclusive = start_inclusive
         self._start_point = start_point
+
+    def __str__(self):
+        prefix = "[" if self._start_inclusive else "("
+        suffix = "]" if self._end_inclusive else ")"
+        return "Edge: " + prefix + "%s, %s" % (self._start_point, self._end_point) + suffix
 
     def end_inclusive(self):
         """Returns True if the end-point is inclusive"""
@@ -182,6 +197,10 @@ class FrontierInTwoDimension:
         self._point = point
         self._validate()
 
+    def __str__(self):
+        return "Frontier: " + (("edges= {" + ", ".join([str(e) for e in self._edges]) + "}") if self._edges else \
+            "point=%s" % self._point)
+
     def _validate(self):
         """Validates the frontier in two-dimensional space"""
         edges = self._edges
@@ -239,6 +258,9 @@ class LowerBound:
     def __init__(self, bounds):
         self._bounds = bounds
 
+    def __str__(self):
+        return "LB: [" + ", ".join([str(b) for b in self._bounds]) + "]"
+
     def bounds(self):
         """Returns the bounds"""
         return self._bounds
@@ -290,6 +312,9 @@ class Point:
 
     def __init__(self, values):
         self._values = values
+
+    def __str__(self):
+        return "Point: (" + ", ".join([str(v) for v in self._values]) + ")"
 
     def dimension(self):
         """Returns the dimension of the point"""
@@ -348,6 +373,9 @@ class PointSolution(Solution):
         super(PointSolution, self).__init__(y_bar)
         self._point = point
 
+    def __str__(self):
+        return "Point Solution: {%s, y=%s}" % (self._point, self._y_bar)
+
     def point(self):
         """Returns the point"""
         return self._point
@@ -361,6 +389,9 @@ class RayInTwoDimension:
         self._angle_in_degrees = angle_in_degrees
         self._origin = origin
         self._validate()
+
+    def __str__(self):
+        return "Ray: {origin: %s, angle: %s}" % (self._origin, self._angle_in_degrees)
 
     def _validate(self):
         """Validates the ray in two-dimensional space"""
@@ -417,6 +448,14 @@ class SearchRegionInTwoDimension(SearchRegion):
         self._y_obj_name = y_obj_name
         self._validate()
 
+    def __str__(self):
+        elements = [self._cone]
+        if self._edge:
+            elements.append(self._edge)
+        if self._lower_bound:
+            elements.append(self._lower_bound)
+        return "Region: " + ", ".join([str(e) for e in elements])
+
     def _validate(self):
         """Validates the search region"""
         lb = self._lower_bound
@@ -428,22 +467,14 @@ class SearchRegionInTwoDimension(SearchRegion):
         if not isinstance(edge, EdgeInTwoDimension):
             raise ValueError("the edge must be in two-dimensional space")
         left_extreme_ray = self._cone.left_extreme_ray()
-        tan_of_left_extreme_ray = math.tan(math.radians(left_extreme_ray.angle_in_degrees())) if \
-            left_extreme_ray.angle_in_degrees() < 90 else float("inf")
-        tan_of_left_extreme_point = edge.left_point().z2() / edge.left_point().z1() if edge.left_point().z1() else \
-            float("inf")
-        if not math.isclose(tan_of_left_extreme_ray, tan_of_left_extreme_point, rel_tol=0.001):
+        if not point_on_ray_in_two_dimension(edge.left_point(), left_extreme_ray):
             raise ValueError(
                 "the left point of the edge '%s' is not on the left extreme ray of the cone with origin '%s' and " \
                 "angle in degrees '%s'" % (
                     edge.left_point().values(), left_extreme_ray.origin().values(), 
                     left_extreme_ray.angle_in_degrees()))
         right_extreme_ray = self._cone.right_extreme_ray()
-        tan_of_right_extreme_ray = math.tan(math.radians(right_extreme_ray.angle_in_degrees())) if \
-            right_extreme_ray.angle_in_degrees() < 90 else float("inf")
-        tan_of_right_extreme_point = edge.right_point().z2() / edge.right_point().z1() if edge.right_point().z1() else \
-            float("inf")
-        if not math.isclose(tan_of_right_extreme_ray, tan_of_right_extreme_point, rel_tol=0.001):
+        if not point_on_ray_in_two_dimension(edge.right_point(), right_extreme_ray):
             raise ValueError(
                 "the right point of the edge '%s' is not on the right extreme ray of the cone with origin '%s' and " \
                 "angle in degrees '%s'" % (

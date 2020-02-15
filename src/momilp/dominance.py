@@ -80,6 +80,8 @@ class DominanceModel:
             model.setObjectiveN(z[i], i, priority=num_objectives - i)
         self._model = model
         self._objective_variables = z.values()
+        model.setParam("LogToConsole", 0)
+        model.setParam("LogFile", "")
 
     def add_dominated_space_constraints(self, frontier):
         """Adds the constraints to the model that define the dominated space by the frontier"""
@@ -330,6 +332,7 @@ class ModelBasedDominanceFilter:
 
     def filter_edge(self, edge):
         """Filters the dominated points in the edge, and returns the updated edges"""
+        self._dominance_model.remove_checked_element_constraints()
         self._dominance_model.add_edge_constraint(edge)
         # solve for z1
         z1_objective_index = 0
@@ -368,8 +371,10 @@ class ModelBasedDominanceFilter:
 
     def filter_point(self, point):
         """Returns the point if it is not dominated, otherwise None"""
+        self._dominance_model.remove_checked_element_constraints()
         self._dominance_model.add_point_constraint(point)
-        return self._solve_model()
+        dominated_point = self._solve_model()
+        return point if not dominated_point else None
 
     def set_dominated_space(self, frontier, reset=True):
         """Sets the dominated space in the model"""
