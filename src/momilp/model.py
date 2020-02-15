@@ -93,7 +93,13 @@ class GurobiMomilpModel(AbstractModel):
         self._discrete_objective_indices = discrete_objective_indices or []
         self._int_var_2_original_lb_and_ub = {}
         assert file_name or gurobi_model, "either file name or gurobi model must be given"
-        self._model = gurobi_model or read(file_name)
+        model = gurobi_model or read(file_name)
+        model.setAttr("ModelName", GurobiMomilpModel._MODEL_NAME)
+        if not log_to_console:
+            model.setParam("LogToConsole", 0)
+        if not log_to_file:
+            model.setParam("LogFile", "")
+        self._model = model
         self._num_obj = num_obj
         self._objective_index_2_name = {}
         self._objective_index_2_priority = {}
@@ -104,10 +110,9 @@ class GurobiMomilpModel(AbstractModel):
         self._region_defining_constraint_names = []
         self._tabu_constraint_names = []
         self._y = []
-        self._set_params(
-            log_to_console=log_to_console, log_to_file=log_to_file, model_name=GurobiMomilpModel._MODEL_NAME)
         self._validate()
         self._initialize()
+        self._set_params(log_to_console=log_to_console, log_to_file=log_to_file)
         if scale:
             self._scale_model()
 
@@ -174,14 +179,13 @@ class GurobiMomilpModel(AbstractModel):
         model.setAttr("ModelSense", sense)
         model.update()
 
-    def _set_params(self, log_to_console=False, log_to_file=True, model_name=None):
+    def _set_params(self, log_to_console=False, log_to_file=True, mip_gap=1e-6, rel_tol=0.0):
         """Sets the model parameters"""
         model = self._model
-        if not log_to_console:
-            model.setParam("LogToConsole", 0)
-        if not log_to_file:
-            model.setParam("LogFile", "")
-        model.setAttr("ModelName", GurobiMomilpModel._MODEL_NAME)
+        for index in range(self._num_obj):
+            model.setParam("ObjNumber", index)
+            model.setAttr("ObjNRelTol", rel_tol)
+        model.Params.MIPGap = mip_gap
         model.update()
 
     def _validate(self):

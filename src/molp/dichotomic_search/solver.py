@@ -43,7 +43,7 @@ class BolpDichotomicSearchWithGurobiSolver(MolpSolver):
             model.setParam("ObjNumber", 1)
             model.setAttr("ObjNPriority", 1 + i)
             model.optimize()
-            values = ModelQueryUtilities.query_optimal_objective_values(model)
+            values, _ = ModelQueryUtilities.query_optimal_objective_values(model)
             new_point = PointInTwoDimension(values)
             if points and points[-1] == new_point:
                 continue
@@ -109,7 +109,7 @@ class BolpDichotomicSearchWithGurobiSolver(MolpSolver):
                 point_with_higher_z1_value, point_with_higher_z2_value)
             self._modify_model_objectives(equal_priority=True, obj_index_2_weight=obj_index_2_weight)
             model.optimize()
-            values = ModelQueryUtilities.query_optimal_objective_values(model)
+            values, _ = ModelQueryUtilities.query_optimal_objective_values(model)
             point = PointInTwoDimension(values)
             if self._isclose(point, point_with_higher_z1_value) or self._isclose(point, point_with_higher_z2_value):
                 continue

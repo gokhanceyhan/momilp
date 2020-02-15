@@ -26,9 +26,9 @@ class Executor:
             raise ValueError(error_message)
         self._solver_package = solver_package
 
-    def execute(self):
+    def execute(self, working_dir):
         """Executes the momilp solver"""
-        algorithm = AlgorithmFactory.create(self._model)
+        algorithm = AlgorithmFactory.create(self._model, working_dir)
         algorithm.run()
 
 
@@ -50,4 +50,4 @@ class MomilpSolverApp:
         args = self._parse_args()
         model = read(args.model_file_path)
         executor = Executor(model)
-        executor.execute()
+        executor.execute(args.working_dir)

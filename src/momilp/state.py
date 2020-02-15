@@ -1,5 +1,9 @@
 """Implements state of the algorithm and its elements"""
 
+from src.common.elements import EdgeSolution, FrontierInTwoDimension
+from src.momilp.dominance import DominanceRules
+from src.momilp.utilities import TypeConversionUtilities
+
 
 class Iteration:
 
@@ -47,9 +51,37 @@ class SolutionState:
         """Adds the edge solution to the weakly nondominated edges"""
         self._weakly_nondominated_edges.append(edge_solution)
 
-    def filter_dominated_points_and_edges(self, frontier):
+    def filter_dominated_points_and_edges(
+            self, dominance_filter, frontier, projected_space_criterion_index_2_criterion_index):
         """Filters the dominated points and edges from the weakly dominated points and edges"""
-        pass
+        assert isinstance(frontier, FrontierInTwoDimension)
+        dimensions = sorted(projected_space_criterion_index_2_criterion_index.values())
+        dominance_filter.set_dominated_space(frontier)
+        for point_solution in self._weakly_nondominated_points:
+            point = point_solution.point()
+            point_in_two_dimension = TypeConversionUtilities.point_to_point_in_two_dimension(dimensions, point)
+            if DominanceRules.PointToFrontier.dominated(point_in_two_dimension, frontier):
+                self._weakly_nondominated_points.remove(point_solution)
+        for edge_solution in self._weakly_nondominated_edges:
+            self._weakly_nondominated_edges.remove(edge_solution)
+            edge = edge_solution.edge()
+            num_dim = len(edge.start_point().values())
+            assert all(
+                [edge.start_point().values()[i] == edge.end_point().values()[i] for i in range(num_dim) if i not in 
+                 dimensions]), "the points of the edge must have the same values in the dimensions other than the %s" \
+                "dimensions" % dimensions
+            edge_in_two_dimension = TypeConversionUtilities.edge_to_edge_in_two_dimension(dimensions, edge)
+            unprojected_dim_2_value = {
+                index: value for index, value in enumerate(edge.start_point().values()) if index not in dimensions}
+            if DominanceRules.EdgeToFrontier.dominated(edge_in_two_dimension, frontier):
+                continue
+            filtered_edges_in_two_dimension = dominance_filter.filter_edge(edge_in_two_dimension)
+            filtered_edges = [
+                TypeConversionUtilities.edge_in_two_dimension_to_edge(
+                    unprojected_dim_2_value, e, projected_space_criterion_index_2_criterion_index)  for e in 
+                filtered_edges_in_two_dimension]
+            nondominated_edges = [EdgeSolution(edge, edge_solution.y_bar()) for edge in filtered_edges]
+            self._weakly_nondominated_edges.extend(nondominated_edges)
 
     def move_weakly_nondominated_to_nondominated(self):
         """Moves all of the weakly nondominated points or edges to nondominated points or edges"""

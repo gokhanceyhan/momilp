@@ -80,7 +80,7 @@ class ConeBasedSearchAlgorithmTest(TestCase):
     def test_three_obj_blp_ex3_problem(self):
         """Tests the algorithm on a small 3-obj blp
         
-        NOTE: There is a single continuos variable The nondominated set has three points."""
+        NOTE: There are two binary variables. The nondominated set has three points."""
         model_file = os.path.join(self._test_data_dir, "three_obj_blp_ex3.lp")
         algorithm = AlgorithmFactory.create(
             model_file, self._logs_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, 
@@ -95,6 +95,27 @@ class ConeBasedSearchAlgorithmTest(TestCase):
         num_points, _ = nondominated_points_df.shape
         self.assert_that(num_points, is_(3))
         self.assert_that(nondominated_edges_df.empty)
+
+    def test_three_obj_blp_ex4_problem(self):
+        """Tests the algorithm on a small 3-obj blp
+        
+        NOTE: There are two binary variables. The nondominated set has 2 edges. This example is nice to examine since 
+        some frontiers span more than one region and the same edge is found with different primary criterion values"""
+        model_file = os.path.join(self._test_data_dir, "three_obj_blp_ex4.lp")
+        algorithm = AlgorithmFactory.create(
+            model_file, self._logs_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, 
+            explore_decision_space=True)
+        state = algorithm.run()
+        report_creator = ReportCreator(algorithm.momilp_model(), state, self._logs_dir)
+        report_creator.create_data_frames()
+        nondominated_points_df = report_creator.nondominated_points_df()
+        nondominated_edges_df = report_creator.nondominated_edges_df()
+        print(nondominated_points_df)
+        print(nondominated_edges_df)
+        num_points, _ = nondominated_points_df.shape
+        num_edges, _ = nondominated_edges_df.shape
+        self.assert_that(num_edges, is_(5))
+        self.assert_that(num_points, is_(1))
 
     def test_three_obj_linear_programming_problem(self):
         """Tests the algorithm on a three-objective linear program"""
