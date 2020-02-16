@@ -91,13 +91,9 @@ class SearchProblem(Problem):
     def _add_tabu_constraint(self, y_bars):
         """Adds the tabu-constraints to the model for the given integer vectors"""
         momilp_model = self._momilp_model
-        binary_model = momilp_model.binary()
         for y_bar in y_bars:
-            constraint_name = SearchProblem._TABU_CONSTRAINT_NAME_TEMPLATE.format(idx=len(self._tabu_y_bars))
-            if binary_model:
-                ConstraintGenerationUtilities.create_binary_tabu_constraint(momilp_model, constraint_name, y_bar)
-            else:
-                ConstraintGenerationUtilities.create_integer_tabu_constraint(momilp_model, constraint_name, y_bar)
+            constraint_name = SearchProblem._TABU_CONSTRAINT_NAME_TEMPLATE.format(idx=len(self._tabu_y_bars))            
+            ConstraintGenerationUtilities.create_tabu_constraint(momilp_model, constraint_name, y_bar)
             self._tabu_y_bars.append(y_bar)
 
     def _remove_tabu_constraints(self):
@@ -121,7 +117,7 @@ class SearchProblem(Problem):
     def solve(self):
         momilp_model = self._momilp_model
         momilp_model.solve()
-        self._result = ModelQueryUtilities.query_optimal_solution(momilp_model.problem())
+        self._result = ModelQueryUtilities.query_optimal_solution(momilp_model.problem(), momilp_model.y())
         return self._result
 
     def tabu_y_bars(self):

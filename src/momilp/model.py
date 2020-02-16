@@ -158,13 +158,13 @@ class GurobiMomilpModel(AbstractModel):
             model.setAttr("ModelSense", -1)
             model.optimize()
             max_point_sol = ModelQueryUtilities.query_optimal_solution(
-                model, raise_error_if_infeasible=True, 
+                model, self._y, raise_error_if_infeasible=True, 
                 solver_stage=SolverStage.MODEL_SCALING).point_solution()
             # minimize
             model.setAttr("ModelSense", 1)
             model.optimize()
             min_point_sol = ModelQueryUtilities.query_optimal_solution(
-                model, raise_error_if_infeasible=True, 
+                model, self._y, raise_error_if_infeasible=True, 
                 solver_stage=SolverStage.MODEL_SCALING).point_solution()
             obj_name = model.getAttr("ObjNName")
             self._objective_name_2_range[obj_name] = ObjectiveRange(max_point_sol, min_point_sol)
@@ -179,13 +179,14 @@ class GurobiMomilpModel(AbstractModel):
         model.setAttr("ModelSense", sense)
         model.update()
 
-    def _set_params(self, log_to_console=False, log_to_file=True, mip_gap=1e-6, rel_tol=0.0):
+    def _set_params(self, log_to_console=False, log_to_file=True, feas_tol=1e-6, mip_gap=1e-6, rel_tol=0.0):
         """Sets the model parameters"""
         model = self._model
         for index in range(self._num_obj):
             model.setParam("ObjNumber", index)
             model.setAttr("ObjNRelTol", rel_tol)
         model.Params.MIPGap = mip_gap
+        model.Params.FeasibilityTol = feas_tol
         model.update()
 
     def _validate(self):
