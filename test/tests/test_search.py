@@ -56,6 +56,26 @@ class SearchProblemTest(TestCase):
         self.assert_that(result.status(), is_(OptimizationStatus.OPTIMAL))
         y_opt = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         self.assert_that(point_solution.y_bar(), is_(y_opt))
+
+    def test_tabu_constraint_handling_for_general_integer_variables(self):
+        file_name = os.path.join(self._test_data_dir, "three_obj_milp_ex1.lp")
+        model = GurobiMomilpModel(file_name=file_name)
+        search_problem = SearchProblem(model)
+        result = search_problem.solve()
+        point_solution = result.point_solution()
+        # check the unrestricted search problem
+        self.assert_that(result.status(), is_(OptimizationStatus.OPTIMAL))
+        y_opt = [1.0, 1.0, 6.0, 1.0, 1.0, 1.0]
+        self.assert_that(point_solution.y_bar(), is_(y_opt))
+        # restrict the optimal integer vector
+        search_problem.update_model(tabu_y_bars=[y_opt])
+        self.assert_that(search_problem.num_tabu_constraints(), is_(1))
+        self.assert_that(model.constraint_name_2_constraint(), has_key("tabu_0"))
+        result = search_problem.solve()
+        point_solution = result.point_solution()
+        self.assert_that(result.status(), is_(OptimizationStatus.OPTIMAL))
+        y_opt = [1.0, 1.0, 5.0, 2.0, 1.0, 1.0]
+        self.assert_that(point_solution.y_bar(), is_(y_opt))
         
 
 class SliceProblemTest(TestCase):

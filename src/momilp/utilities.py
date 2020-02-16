@@ -20,18 +20,6 @@ class ConstraintGenerationUtilities:
     _RIGHT_EXTREME_RAY_CONSTRAINT_NAME_SUFFIX = "right_extr_ray"
 
     @staticmethod
-    def create_binary_tabu_constraint(momilp_model, name, y_bar):
-        """Creates and adds the tabu-constraints to the model to exclude the binary y-vectors from the feasible set"""
-        y = momilp_model.y()        
-        lhs = LinExpr()
-        rhs = 1
-        for y_, y_bar_ in zip(y, y_bar):
-            coeff = -1 if y_bar_ == 1 else 1
-            rhs = rhs - 1 if y_bar_ else rhs
-            lhs.add(y_, coeff)
-        momilp_model.add_constraint(lhs, name, rhs, GRB.GREATER_EQUAL, tabu_constraint=True)
-
-    @staticmethod
     def create_constraints_for_cone_in_positive_quadrant(momilp_model, cone, x_var, y_var, name=None):
         """Creates and adds the constraints to the model for the given cone, returns the constraints"""
         assert isinstance(cone, ConvexConeInPositiveQuadrant)
@@ -88,9 +76,44 @@ class ConstraintGenerationUtilities:
         return constraints
 
     @staticmethod
-    def create_integer_tabu_constraint(momilp_model, name, y_bar):
+    def create_tabu_constraint(momilp_model, name, y_bar):
         """Creates and adds the tabu-constraints to the model to exclude the integer y-vectors from the feasible set"""
-        raise NotImplementedError()
+        model = momilp_model.problem()
+        y = momilp_model.y()        
+        tabu_constraint_lhs = LinExpr()
+        tabu_constraint_rhs = 1
+        for index, (y_, y_bar_) in enumerate(zip(y, y_bar)):
+            if y_bar_ == y_.LB:
+                tabu_constraint_lhs.add(y_)
+                tabu_constraint_rhs += y_bar_
+            elif y_bar_ == y_.UB:
+                tabu_constraint_lhs.add(y_, -1)
+                tabu_constraint_rhs -= y_bar_
+            else:
+                big_m = (y_.UB - y_.LB) if y_.UB < GRB.INFINITY else model.Params.FeasRelaxBigM
+                y_pos = model.addVar(ub=big_m, vtype=GRB.INTEGER)
+                y_neg = model.addVar(ub=big_m, vtype=GRB.INTEGER)
+                tabu_constraint_lhs.addTerms([1, 1], [y_pos, y_neg])
+                deviation_lhs = LinExpr()
+                deviation_lhs.addTerms([1, -1, 1], [y_, y_pos, y_neg])
+                deviation_constraint_name = "_".join([name, str(index), "dev"])
+                momilp_model.add_constraint(
+                    deviation_lhs, deviation_constraint_name, y_bar_, GRB.EQUAL, tabu_constraint=True)
+                beta_var = model.addVar(vtype=GRB.BINARY)
+                positive_deviation_lhs = LinExpr()
+                positive_deviation_lhs.addTerms([1, -big_m], [y_pos, beta_var])
+                positive_deviation_constraint_name = "_".join([name, str(index), "pos_dev"])
+                momilp_model.add_constraint(
+                    positive_deviation_lhs, positive_deviation_constraint_name, 0.0, GRB.LESS_EQUAL, 
+                    tabu_constraint=True)
+                negative_deviation_lhs = LinExpr()
+                negative_deviation_lhs.addTerms([1, big_m], [y_neg, beta_var])
+                negative_deviation_constraint_name = "_".join([name, str(index), "neg_dev"])
+                momilp_model.add_constraint(
+                    negative_deviation_lhs, negative_deviation_constraint_name, big_m, GRB.LESS_EQUAL, 
+                    tabu_constraint=True)
+        momilp_model.add_constraint(
+            tabu_constraint_lhs, name, tabu_constraint_rhs, GRB.GREATER_EQUAL, tabu_constraint=True)
 
 
 class ModelQueryUtilities:
@@ -109,7 +132,7 @@ class ModelQueryUtilities:
     }
 
     @staticmethod
-    def query_optimal_solution(model, raise_error_if_infeasible=False, solver_stage=None):
+    def query_optimal_solution(model, y, raise_error_if_infeasible=False, solver_stage=None):
         """Queries the model for a feasible solution, and returns the best feasible solution if there exists any"""
         status = ModelQueryUtilities.GUROBI_STATUS_2_OPTIMIZATION_STATUS.get(
             model.getAttr("Status"), OptimizationStatus.UNDEFINED)
@@ -128,7 +151,7 @@ class ModelQueryUtilities:
         for obj_index in range(model.getAttr("NumObj")):
             obj = model.getObjective(index=obj_index)
             values.append(obj.getValue())
-        y_bar = [var.x for var in model.getVars() if var.getAttr("VType") == "B" or var.getAttr("VType") == "I"]
+        y_bar = [var.x for var in y]
         return SearchProblemResult(PointSolution(Point(values), y_bar), status)
 
 
