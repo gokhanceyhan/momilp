@@ -159,11 +159,15 @@ class ReportCreator:
 
     """Implements the report utilities"""
 
-    def __init__(self, momilp_model, state, output_dir):
+    _FILE_NAME_TEMPLATE = "{instance_name}_{report_name}.csv"
+    _NONDOMINATED_SET_REPORT_NAME = "nds"
+
+    def __init__(self, momilp_model, state, instance_name, output_dir):
+        self._instance_name = instance_name
         self._momilp_model = momilp_model
-        self._output_dir = output_dir
         self._nondominated_edges_df = None
         self._nondominated_points_df = None
+        self._output_dir = output_dir
         self._state = state
 
     def _set_nondominated_edges_df(self):
@@ -177,7 +181,8 @@ class ReportCreator:
                 {
                     obj_index_2_name[index]: value for index, value in 
                     enumerate(zip(edge.start_point().values(), edge.end_point().values()))})
-        self._nondominated_edges_df = pd.DataFrame.from_records(records)
+        self._nondominated_edges_df = pd.DataFrame.from_records(records) if records else \
+            pd.DataFrame(columns=obj_index_2_name.values())
 
     def _set_nondominated_points_df(self):
         """Sets the nondominated points data frame"""
@@ -187,16 +192,27 @@ class ReportCreator:
         records = []
         for point in points:
             records.append({obj_index_2_name[index]: value for index, value in enumerate(point.values())})
-        self._nondominated_points_df = pd.DataFrame.from_records(records)
+        self._nondominated_points_df = pd.DataFrame.from_records(records) if records else \
+            pd.DataFrame(columns=obj_index_2_name.values())
+
+    def _to_csv(self, df, report_name):
+        """Converts the data frame to csv file and exports to the output directory"""
+        file_name = ReportCreator._FILE_NAME_TEMPLATE.format(instance_name=self._instance_name, report_name=report_name)
+        df.to_csv(os.path.join(self._output_dir, file_name))
+
+    def create(self):
+        """Creates the reports"""
+        self.create_data_frames()
+        print(self._nondominated_edges_df)
+        print(self._nondominated_points_df)
+        nondominated_set_df = self._nondominated_points_df.append(self._nondominated_edges_df)
+        report_name = ReportCreator._NONDOMINATED_SET_REPORT_NAME
+        self._to_csv(nondominated_set_df, report_name)
 
     def create_data_frames(self):
         """Creates the data frames of the report"""
         self._set_nondominated_edges_df()
         self._set_nondominated_points_df()
-
-    def export(self):
-        """Writes the files to the spcified output directory"""
-        pass
 
     def nondominated_edges_df(self):
         """Returns the nondominated edges data frame"""
