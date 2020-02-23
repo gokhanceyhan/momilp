@@ -170,28 +170,40 @@ class ReportCreator:
         self._output_dir = output_dir
         self._state = state
 
+    def _restore_original_values(self, values):
+        """Restores the original values of the criteria by using the objective inverse scalers"""
+        model_sense = self._momilp_model.model_sense()
+        objective_index_2_name = self._momilp_model.objective_index_2_name()
+        objective_name_2_inverse_scaler = self._momilp_model.objective_name_2_inverse_scaler()
+        sense_coefficient = - model_sense
+        return [
+            sense_coefficient * objective_name_2_inverse_scaler[objective_index_2_name[index]](value) for index, value 
+            in enumerate(values)]
+
     def _set_nondominated_edges_df(self):
-        """Sets the nondominated edges data frame"""
+        """Sets the data frame of the nondominated edges"""
         solution_state = self._state.solution_state()
         obj_index_2_name = self._momilp_model.objective_index_2_name()
         edges = [nondominated_edge.edge() for nondominated_edge in solution_state.nondominated_edges()]
         records = []
         for edge in edges:
+            start_point_values = self._restore_original_values(edge.start_point().values())
+            end_point_values = self._restore_original_values(edge.end_point().values())
             records.append(
-                {
-                    obj_index_2_name[index]: value for index, value in 
-                    enumerate(zip(edge.start_point().values(), edge.end_point().values()))})
+                {obj_index_2_name[index]: value for index, value in 
+                 enumerate(zip(start_point_values, end_point_values))})
         self._nondominated_edges_df = pd.DataFrame.from_records(records) if records else \
             pd.DataFrame(columns=obj_index_2_name.values())
 
     def _set_nondominated_points_df(self):
-        """Sets the nondominated points data frame"""
+        """Sets the data frame of the nondominated points"""
         solution_state = self._state.solution_state()
         obj_index_2_name = self._momilp_model.objective_index_2_name()
         points = [nondominated_point.point() for nondominated_point in solution_state.nondominated_points()]
         records = []
         for point in points:
-            records.append({obj_index_2_name[index]: value for index, value in enumerate(point.values())})
+            values = self._restore_original_values(point.values())
+            records.append({obj_index_2_name[index]: value for index, value in enumerate(values)})
         self._nondominated_points_df = pd.DataFrame.from_records(records) if records else \
             pd.DataFrame(columns=obj_index_2_name.values())
 
@@ -203,8 +215,6 @@ class ReportCreator:
     def create(self):
         """Creates the reports"""
         self.create_data_frames()
-        print(self._nondominated_edges_df)
-        print(self._nondominated_points_df)
         nondominated_set_df = self._nondominated_points_df.append(self._nondominated_edges_df)
         report_name = ReportCreator._NONDOMINATED_SET_REPORT_NAME
         self._to_csv(nondominated_set_df, report_name)

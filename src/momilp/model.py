@@ -99,9 +99,11 @@ class GurobiMomilpModel(AbstractModel):
         if not log_to_file:
             model.setParam("LogFile", "")
         self._model = model
+        self._model_sense = model.getAttr("ModelSense")
         self._num_obj = num_obj
         self._objective_index_2_name = {}
         self._objective_index_2_priority = {}
+        self._objective_name_2_inverse_scaler = {}
         self._objective_name_2_range = {}
         self._objective_name_2_scaler = {}
         self._objective_name_2_variable = {}
@@ -148,10 +150,11 @@ class GurobiMomilpModel(AbstractModel):
         self._int_var_2_original_lb_and_ub = {var: (var.LB, var.UB) for var in self._y}
         model.update()
 
-    def _scale_model(self, scale_objective_ranges=False):
+    def _scale_model(self, scale_objective_ranges=True):
         """Scales the model
         
-        NOTE: (z - z^N) / (z^I - z^N) where z^N is an underestimator of the nadir point and z^I is the ideal point"""
+        NOTE: If 'scale_objective_ranges' is True, 'Min-Max Scaling' is applied. Otherwise, objective functions are 
+        shifted so that the minimum value vector is on the origin."""
         model = self._model
         sense = model.getAttr("ModelSense")
         # Implement the procedure to transform the feasible objective space into R_{>=0} and scale the criterion 
@@ -165,9 +168,6 @@ class GurobiMomilpModel(AbstractModel):
             model.setParam("ObjNumber", obj_index)
             obj_name = model.getAttr("ObjNName")
             priority = model.getAttr("ObjNPriority")
-            weight = model.getAttr("ObjNWeight")
-            abs_tol = model.getAttr("ObjNAbsTol")
-            rel_tol = model.getAttr("ObjNRelTol")
             # make the objective as the highest priority objective
             model.setAttr("ObjNPriority", max_priority + 1)
             # maximize
@@ -184,25 +184,31 @@ class GurobiMomilpModel(AbstractModel):
                 solver_stage=SolverStage.MODEL_SCALING).point_solution()
             self._objective_name_2_range[obj_name] = ObjectiveRange(max_point_sol, min_point_sol)
             # scale
-            obj = model.getObjective(index=obj_index)
             obj_max=max_point_sol.point().values()[obj_index]
             obj_min=min_point_sol.point().values()[obj_index]
-            scaling_coeff = 1 / (obj_max - obj_min) if scale_objective_ranges and (obj_min != obj_max) else 1
-            scaling_constant = - obj_min 
+            scaling_coeff = obj_max - obj_min if scale_objective_ranges else 1
+            scaling_constant = obj_min 
 
             def obj_scaler(value):
-                return (value + scaling_constant) * scaling_coeff
+                return (value - scaling_constant) / scaling_coeff if scaling_coeff > 0 else (value - scaling_constant)
 
-            model.setObjectiveN(obj_scaler(obj), obj_index, priority, weight, abs_tol, rel_tol, obj_name)
+            def obj_inverse_scaler(value):
+                return  value * scaling_coeff + scaling_constant
+
+            obj_var = self._objective_name_2_variable[obj_name]
+            obj_constraint = self._constraint_name_2_constraint[obj_name]
+            coeff = sense * scaling_coeff
+            model.chgCoeff(obj_constraint, obj_var, coeff)
+            obj_constraint.RHS = scaling_constant
             self._objective_name_2_scaler[obj_name] = obj_scaler
+            self._objective_name_2_inverse_scaler[obj_name] = obj_inverse_scaler
             # update the bounds of the objective variables
-            self._objective_name_2_variable[obj_name].LB = obj_min
+            self._objective_name_2_variable[obj_name].LB = 0.0
             # restore the original priority of the objective
             model.setAttr("ObjNPriority", priority)
         # restore the original objective sense
         model.setAttr("ModelSense", sense)
         model.update()
-        model.write("./logs/p.lp")
 
     def _set_params(self, log_to_console=False, log_to_file=True, feas_tol=1e-6, mip_gap=1e-6, rel_tol=0.0):
         """Sets the model parameters"""
@@ -312,6 +318,10 @@ class GurobiMomilpModel(AbstractModel):
             y_.setAttr("LB", y_bar_)
             y_.setAttr("UB", y_bar_)
         self._model.update()
+
+    def model_sense(self):
+        """Returns the sense (GRB.MAXIMIZE or GRB.MINIMIZE) of the model"""
+        return self._model_sense
     
     def num_int_vars(self):
         return self._model.getAttr("NumIntVars")
@@ -329,6 +339,10 @@ class GurobiMomilpModel(AbstractModel):
     def objective_index_2_priority(self):
         """Returns the dictionary of objective index to priority"""
         return self._objective_index_2_priority
+
+    def objective_name_2_inverse_scaler(self):
+        """Returns the objective name to inverse scaler"""
+        return self._objective_name_2_inverse_scaler
 
     def objective_name_2_range(self):
         """Returns the objective name to objective range"""

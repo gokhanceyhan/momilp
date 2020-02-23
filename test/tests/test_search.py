@@ -21,7 +21,7 @@ class SearchProblemTest(TestCase):
     def test_tabu_constraint_handling(self):
         """Tests handling the tabu-constraints in the problem"""
         file_name = os.path.join(self._test_data_dir, "three_obj_blp.lp")
-        model = GurobiMomilpModel(file_name)
+        model = GurobiMomilpModel(file_name, scale=False)
         search_problem = SearchProblem(model)
         result = search_problem.solve()
         point_solution = result.point_solution()
@@ -59,7 +59,7 @@ class SearchProblemTest(TestCase):
 
     def test_tabu_constraint_handling_for_general_integer_variables(self):
         file_name = os.path.join(self._test_data_dir, "three_obj_milp_ex1.lp")
-        model = GurobiMomilpModel(file_name)
+        model = GurobiMomilpModel(file_name, scale=False)
         search_problem = SearchProblem(model)
         result = search_problem.solve()
         point_solution = result.point_solution()
@@ -90,7 +90,7 @@ class SliceProblemTest(TestCase):
     def test_slice_problem_restricted_to_search_region_in_two_dimension(self):
         """Tests slice problem restricted to a search region"""
         file_name = os.path.join(self._test_data_dir, "three_obj_blp.lp")
-        model = GurobiMomilpModel(file_name)
+        model = GurobiMomilpModel(file_name, scale=False)
         slice_problem = SliceProblem(model, self._slice_prob_obj_index_2_original_obj_index)
         origin = PointInTwoDimension([0, 0])
         cone = ConvexConeInPositiveQuadrant([RayInTwoDimension(37, origin), RayInTwoDimension(45, origin)])
@@ -106,7 +106,7 @@ class SliceProblemTest(TestCase):
     def test_unrestricted_slice_problem(self):
         """Tests the slice problem without any region constraints"""
         file_name = os.path.join(self._test_data_dir, "three_obj_blp.lp")
-        model = GurobiMomilpModel(file_name)
+        model = GurobiMomilpModel(file_name, scale=False)
         slice_problem = SliceProblem(model, self._slice_prob_obj_index_2_original_obj_index)
         y_bar = [1] * 12 + [0] * 8
         slice_problem.update_model(y_bar=y_bar)

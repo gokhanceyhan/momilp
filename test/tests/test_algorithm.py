@@ -15,6 +15,7 @@ class ConeBasedSearchAlgorithmTest(TestCase):
     """Implements tests for the cone-based search algorithm"""
 
     def setUp(self):
+        self._instance_name = "instance"
         self._logs_dir = os.environ["MOMILP_LOG_PATH"]
         self._test_data_dir = os.path.join(os.environ["PYTHON_TEST_PATH"], "data") 
         self.assert_that = assert_that
@@ -26,7 +27,7 @@ class ConeBasedSearchAlgorithmTest(TestCase):
             model_file, self._logs_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, 
             discrete_objective_indices=[0, 1, 2])
         state = algorithm.run()
-        report_creator = ReportCreator(algorithm.momilp_model(), state, self._logs_dir)
+        report_creator = ReportCreator(algorithm.momilp_model(), state, self._instance_name, self._logs_dir)
         report_creator.create_data_frames()
         nondominated_points_df = report_creator.nondominated_points_df()
         nondominated_edges_df = report_creator.nondominated_edges_df()
@@ -46,7 +47,7 @@ class ConeBasedSearchAlgorithmTest(TestCase):
             model_file, self._logs_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, 
             explore_decision_space=True)
         state = algorithm.run()
-        report_creator = ReportCreator(algorithm.momilp_model(), state, self._logs_dir)
+        report_creator = ReportCreator(algorithm.momilp_model(), state, self._instance_name, self._logs_dir)
         report_creator.create_data_frames()
         nondominated_points_df = report_creator.nondominated_points_df()
         nondominated_edges_df = report_creator.nondominated_edges_df()
@@ -66,7 +67,7 @@ class ConeBasedSearchAlgorithmTest(TestCase):
             model_file, self._logs_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, 
             explore_decision_space=True)
         state = algorithm.run()
-        report_creator = ReportCreator(algorithm.momilp_model(), state, self._logs_dir)
+        report_creator = ReportCreator(algorithm.momilp_model(), state, self._instance_name, self._logs_dir)
         report_creator.create_data_frames()
         nondominated_points_df = report_creator.nondominated_points_df()
         nondominated_edges_df = report_creator.nondominated_edges_df()
@@ -86,7 +87,7 @@ class ConeBasedSearchAlgorithmTest(TestCase):
             model_file, self._logs_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, 
             explore_decision_space=True)
         state = algorithm.run()
-        report_creator = ReportCreator(algorithm.momilp_model(), state, self._logs_dir)
+        report_creator = ReportCreator(algorithm.momilp_model(), state, self._instance_name, self._logs_dir)
         report_creator.create_data_frames()
         nondominated_points_df = report_creator.nondominated_points_df()
         nondominated_edges_df = report_creator.nondominated_edges_df()
@@ -106,7 +107,7 @@ class ConeBasedSearchAlgorithmTest(TestCase):
             model_file, self._logs_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, 
             explore_decision_space=True)
         state = algorithm.run()
-        report_creator = ReportCreator(algorithm.momilp_model(), state, self._logs_dir)
+        report_creator = ReportCreator(algorithm.momilp_model(), state, self._instance_name, self._logs_dir)
         report_creator.create_data_frames()
         nondominated_points_df = report_creator.nondominated_points_df()
         nondominated_edges_df = report_creator.nondominated_edges_df()

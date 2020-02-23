@@ -73,13 +73,18 @@ class BolpDichotomicSearchWithGurobiSolver(MolpSolver):
             model.setParam("ObjNumber", obj_index)
             model.setAttr("ObjNWeight", weight)
 
-    def _set_model_params(self, log_to_console=False, log_to_file=True):
-        """Sets the model parameters"""
+    def _set_model_params(self, feas_tol=1e-9, log_to_console=False, log_to_file=True, opt_tol=1e-9):
+        """Sets the model parameters
+        
+        NOTE: Default feasibility or optimality tolerances of Gurobu (1e-6) are leading to incorrect nd set when the 
+        objective functions are scaled"""
         model = self._model
         if not log_to_console:
             model.setParam("LogToConsole", 0)
         if not log_to_file:
             model.setParam("LogFile", "")
+        model.Params.FeasibilityTol = feas_tol
+        model.Params.OptimalityTol = opt_tol
         model.update()
 
     @staticmethod
