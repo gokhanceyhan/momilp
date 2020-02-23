@@ -87,22 +87,23 @@ class GurobiMomilpModel(AbstractModel):
     _MODEL_NAME = "P"
 
     def __init__(
-            self, discrete_objective_indices=None, file_name=None, gurobi_model=None, log_to_console=False, 
-            log_to_file=True, num_obj=None, scale=True):
+            self, model_file, discrete_objective_indices=None, log_to_console=False, log_to_file=True, num_obj=None, 
+            scale=True):
         self._constraint_name_2_constraint = {}
         self._discrete_objective_indices = discrete_objective_indices or []
         self._int_var_2_original_lb_and_ub = {}
-        assert file_name or gurobi_model, "either file name or gurobi model must be given"
-        model = gurobi_model or read(file_name)
+        model = read(model_file)
         model.setAttr("ModelName", GurobiMomilpModel._MODEL_NAME)
         if not log_to_console:
             model.setParam("LogToConsole", 0)
         if not log_to_file:
             model.setParam("LogFile", "")
         self._model = model
+        self._model_sense = model.getAttr("ModelSense")
         self._num_obj = num_obj
         self._objective_index_2_name = {}
         self._objective_index_2_priority = {}
+        self._objective_name_2_inverse_scaler = {}
         self._objective_name_2_range = {}
         self._objective_name_2_scaler = {}
         self._objective_name_2_variable = {}
@@ -127,10 +128,21 @@ class GurobiMomilpModel(AbstractModel):
             self._objective_index_2_name[obj_index] = name
             obj = model.getObjective(index=obj_index)
             # define continuous variables for the objective functions
-            obj_var = model.addVar(name=name)
+            obj_var = model.addVar(lb=-GRB.INFINITY, name=name)
             self.add_constraint(
                 obj - obj_var if model.getAttr("ModelSense") == GRB.MAXIMIZE else obj + obj_var, name, 0.0, GRB.EQUAL)
             self._objective_name_2_variable[name] = obj_var
+        # convert the problem into a maximization problem
+        model.setAttr("ModelSense", -1)
+        for obj_index in range(model.getAttr("NumObj")):
+            model.setParam("ObjNumber", obj_index)
+            name = model.getAttr("ObjNName")
+            priority = model.getAttr("ObjNPriority")
+            weight = model.getAttr("ObjNWeight")
+            abs_tol = model.getAttr("ObjNAbsTol")
+            rel_tol = model.getAttr("ObjNRelTol")
+            obj_var = self._objective_name_2_variable[name]
+            model.setObjectiveN(obj_var, obj_index, priority, weight, abs_tol, rel_tol, name)
         # store the integer variable vector
         vars_ = self._model.getVars()
         self._y = [var for var in vars_ if var.getAttr("VType") == "B" or var.getAttr("VType") == "I"]
@@ -138,19 +150,23 @@ class GurobiMomilpModel(AbstractModel):
         self._int_var_2_original_lb_and_ub = {var: (var.LB, var.UB) for var in self._y}
         model.update()
 
-    def _scale_model(self):
-        """Scales the model"""
-        # MOMILP_TO_DO: It seems that the objective functions are not updated.
+    def _scale_model(self, scale_objective_ranges=True):
+        """Scales the model
+        
+        NOTE: If 'scale_objective_ranges' is True, 'Min-Max Scaling' is applied. Otherwise, objective functions are 
+        shifted so that the minimum value vector is on the origin."""
         model = self._model
         sense = model.getAttr("ModelSense")
-        # Implement the procedure to transform the feasible objective space into R_{>=0}
+        # Implement the procedure to transform the feasible objective space into R_{>=0} and scale the criterion 
+        # vectors to interval [0, 1]
         max_priority = 0
-        for index in range(self._num_obj):
-            model.setParam("ObjNumber", index)
+        for obj_index in range(self._num_obj):
+            model.setParam("ObjNumber", obj_index)
             priority = model.getAttr("ObjNPriority")
             max_priority = max(max_priority, priority)
-        for index in range(self._num_obj):
-            model.setParam("ObjNumber", index)
+        for obj_index in range(self._num_obj):
+            model.setParam("ObjNumber", obj_index)
+            obj_name = model.getAttr("ObjNName")
             priority = model.getAttr("ObjNPriority")
             # make the objective as the highest priority objective
             model.setAttr("ObjNPriority", max_priority + 1)
@@ -166,13 +182,28 @@ class GurobiMomilpModel(AbstractModel):
             min_point_sol = ModelQueryUtilities.query_optimal_solution(
                 model, self._y, raise_error_if_infeasible=True, 
                 solver_stage=SolverStage.MODEL_SCALING).point_solution()
-            obj_name = model.getAttr("ObjNName")
             self._objective_name_2_range[obj_name] = ObjectiveRange(max_point_sol, min_point_sol)
-            
-            def obj_scaler(value, obj_min=min_point_sol.point().values()[index]):
-                return value + max(-1 * obj_min, 0)
+            # scale
+            obj_max=max_point_sol.point().values()[obj_index]
+            obj_min=min_point_sol.point().values()[obj_index]
+            scaling_coeff = obj_max - obj_min if scale_objective_ranges else 1
+            scaling_constant = obj_min 
 
+            def obj_scaler(value):
+                return (value - scaling_constant) / scaling_coeff if scaling_coeff > 0 else (value - scaling_constant)
+
+            def obj_inverse_scaler(value):
+                return  value * scaling_coeff + scaling_constant
+
+            obj_var = self._objective_name_2_variable[obj_name]
+            obj_constraint = self._constraint_name_2_constraint[obj_name]
+            coeff = sense * scaling_coeff
+            model.chgCoeff(obj_constraint, obj_var, coeff)
+            obj_constraint.RHS = scaling_constant
             self._objective_name_2_scaler[obj_name] = obj_scaler
+            self._objective_name_2_inverse_scaler[obj_name] = obj_inverse_scaler
+            # update the bounds of the objective variables
+            self._objective_name_2_variable[obj_name].LB = 0.0
             # restore the original priority of the objective
             model.setAttr("ObjNPriority", priority)
         # restore the original objective sense
@@ -287,6 +318,10 @@ class GurobiMomilpModel(AbstractModel):
             y_.setAttr("LB", y_bar_)
             y_.setAttr("UB", y_bar_)
         self._model.update()
+
+    def model_sense(self):
+        """Returns the sense (GRB.MAXIMIZE or GRB.MINIMIZE) of the model"""
+        return self._model_sense
     
     def num_int_vars(self):
         return self._model.getAttr("NumIntVars")
@@ -304,6 +339,10 @@ class GurobiMomilpModel(AbstractModel):
     def objective_index_2_priority(self):
         """Returns the dictionary of objective index to priority"""
         return self._objective_index_2_priority
+
+    def objective_name_2_inverse_scaler(self):
+        """Returns the objective name to inverse scaler"""
+        return self._objective_name_2_inverse_scaler
 
     def objective_name_2_range(self):
         """Returns the objective name to objective range"""

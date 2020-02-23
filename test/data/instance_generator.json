@@ -1,0 +1,7 @@
+{
+    "instance_type": "general_momilp",
+    "num_instances": 1,
+    "parameters": {
+        "num_objs": 3
+    }
+}

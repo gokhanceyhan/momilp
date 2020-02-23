@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+
+"""Runs the momilp instance generator"""
+
+from src.instance_generator.executor import InstanceGeneratorApp
+
+InstanceGeneratorApp().run()

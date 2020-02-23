@@ -105,7 +105,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
     def _create_momilp_model(self):
         """Creates and returns a momilp model"""
         return GurobiMomilpModel(
-            file_name=self._model_file, discrete_objective_indices=self._discrete_objective_indices)
+            self._model_file, discrete_objective_indices=self._discrete_objective_indices)
 
     def _create_positive_quadrant_convex_cone(self):
         """Returns a convex cone corresponding to the positive quadrant"""
