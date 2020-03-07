@@ -1,2 +1,2 @@
 # momilp
-Multi-objective Mixed Integer Linear Programming
+Solver for a class of Multi-objective Mixed Integer Linear Programs (MOMILPs)
