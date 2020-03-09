@@ -115,8 +115,9 @@ class ConeBasedSearchAlgorithmTest(TestCase):
         print(nondominated_edges_df)
         num_points, _ = nondominated_points_df.shape
         num_edges, _ = nondominated_edges_df.shape
+        # MOMILP_TO_DO: MOMILP-8: Generation of weakly nondominated but dominated points or edges
         self.assert_that(num_edges, is_(5))
-        self.assert_that(num_points, is_(1))
+        self.assert_that(num_points, is_(2))
 
     def test_three_obj_linear_programming_problem(self):
         """Tests the algorithm on a three-objective linear program"""

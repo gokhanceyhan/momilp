@@ -19,8 +19,8 @@ class Executor:
     _UNSUPPORTED_SOLVER_PACKAGE_ERROR_MESSAGE = \
         "the solver package is not supported, define the model in one of the '{supported_solvers!s}' solver packages"
 
-    def __init__(self, model_file, solver_package=SolverPackage.GUROBI):
-        self._model_file = model_file
+    def __init__(self, model_files, solver_package=SolverPackage.GUROBI):
+        self._model_files = model_files
         if solver_package not in Executor._SUPPORTED_SOLVER_PACKAGES:
             error_message = Executor._UNSUPPORTED_SOLVER_PACKAGE_ERROR_MESSAGE.format(
                 solver=solver_package, supported_solvers=Executor._SUPPORTED_SOLVER_PACKAGES)
@@ -29,10 +29,11 @@ class Executor:
 
     def execute(self, working_dir):
         """Executes the momilp solver"""
-        algorithm = AlgorithmFactory.create(self._model_file, working_dir)
-        state = algorithm.run()
-        instance_name = os.path.splitext(os.path.basename(self._model_file))[0]
-        ReportCreator(algorithm.momilp_model(), state, instance_name, working_dir).create()
+        for model_file in self._model_files:
+            algorithm = AlgorithmFactory.create(model_file, working_dir)
+            state = algorithm.run()
+            instance_name = os.path.splitext(os.path.basename(model_file))[0]
+            ReportCreator(algorithm.momilp_model(), state, instance_name, working_dir).create()
 
 
 class MomilpSolverApp:
@@ -42,7 +43,9 @@ class MomilpSolverApp:
     def _parse_args(self):
         """Parses and returns the arguments"""
         parser = argparse.ArgumentParser(description="momilp solver app")
-        parser.add_argument("-m", "--model-file-path", help="sets the path to the model file (.lp format)")
+        parser.add_argument(
+            "-m", "--model-file-path", 
+            help="sets the path to the directory where the model files (.lp format) are stored")
         parser.add_argument(
             "-s", "--solver-package", choices=[SolverPackage.GUROBI.value], help="sets the solver package to use")
         parser.add_argument("-w", "--working-dir", help="sets the path to the working directory")
@@ -51,5 +54,7 @@ class MomilpSolverApp:
     def run(self):
         """Runs the command line application"""
         args = self._parse_args()
-        executor = Executor(args.model_file_path, solver_package=SolverPackage(args.solver_package))
+        model_file_path = args.model_file_path
+        model_files = [os.path.join(model_file_path, f) for f in os.listdir(model_file_path) if f.endswith(".lp")]
+        executor = Executor(model_files, solver_package=SolverPackage(args.solver_package))
         executor.execute(args.working_dir)

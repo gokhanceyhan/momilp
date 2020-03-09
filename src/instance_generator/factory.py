@@ -20,7 +20,7 @@ class InstanceCreator:
         """Creates general momilp instances"""
         for i in range(num_instances):
             param_2_value = MomilpInstanceParameterSet(**params).to_dict()
-            instance = GurobiMomilpInstance(param_2_value, np_rand_num_generator_seed=i)
+            instance = GurobiMomilpInstance(param_2_value, instance_number=i+1, np_rand_num_generator_seed=i)
             instance.write(output_dir)
 
     @staticmethod

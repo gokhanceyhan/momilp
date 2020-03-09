@@ -10,12 +10,12 @@ class GurobiMomilpModelTest(TestCase):
 
     """Implements tests for the Gurobi Momilp Model"""
 
-    # TO_DO: Add an example model with at least one objective having negative values at minimum
-    # TO_DO: Add an example model with at least one objective having unbounded minimum
-    # TO_DO: Add an example model with at least one objective having unbounded maximum
-    # TO_DO: Add an exmaple model which is infeasible
+    # MOMILP_TO_DO: Add an example model with at least one objective having negative values at minimum
+    # MOMILP_TO_DO: Add an example model with at least one objective having unbounded minimum
+    # MOMILP_TO_DO: Add an example model with at least one objective having unbounded maximum
+    # MOMILP_TO_DO: Add an exmaple model which is infeasible
 
-    # TO_DO: Test constraint deletion
+    # MOMILP_TO_DO: Test constraint deletion
 
     def setUp(self):
         self._test_data_dir = os.path.join(os.environ["PYTHON_TEST_PATH"], "data") 

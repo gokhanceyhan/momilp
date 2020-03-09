@@ -1,5 +1,6 @@
 """Implements the utilities for the momilp solver"""
 
+from copy import deepcopy
 from gurobipy import Constr, GRB, LinExpr
 import math
 import operator
@@ -67,8 +68,9 @@ class ConstraintGenerationUtilities:
         name = name or str(id(lower_bound))
         name_ = "_".join([ConstraintGenerationUtilities._LOWER_BOUND_CONSTRAINT_NAME_PREFIX, name, "z1"])
         constraints = []
-        constraints.append(
-            momilp_model.add_constraint(x_var, name_, lower_bound.z1(), GRB.GREATER_EQUAL, region_constraint=True))
+        if lower_bound.z1():
+            constraints.append(
+                momilp_model.add_constraint(x_var, name_, lower_bound.z1(), GRB.GREATER_EQUAL, region_constraint=True))
         name_ = "_".join([ConstraintGenerationUtilities._LOWER_BOUND_CONSTRAINT_NAME_PREFIX, name, "z2"])
         if lower_bound.z2():
             constraints.append(
@@ -268,12 +270,14 @@ class SearchUtilities:
         return RayInTwoDimension(math.degrees(math.atan(tan)), from_point)
 
     @staticmethod
-    def partition_search_region_in_two_dimension(frontier, region, lower_bound_delta=0.0):
+    def partition_search_region_in_two_dimension(initial_frontier, initial_region, lower_bound_delta=0.0):
         """Partition the search region in two dimension
         
         NOTE: Eliminates the subset of the region dominated by the frontier, and returns the relatively nondominated 
         sub-regions defined by the rays passing thorugh the extreme points of the frontier. Returned regions are in the 
         order of cones with left extreme rays having non-increasing angles with the x-axis (index 0)"""
+        frontier = deepcopy(initial_frontier)
+        region = deepcopy(initial_region)
         assert isinstance(frontier, FrontierInTwoDimension)
         assert isinstance(region, SearchRegionInTwoDimension)
         x_obj_name = region.x_obj_name()
@@ -334,7 +338,8 @@ class SearchUtilities:
             cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
             regions.append(
                 SearchRegionInTwoDimension(
-                    x_obj_name, y_obj_name, cone, edge=edge, lower_bound=LowerBoundInTwoDimension(initial_lb)))
+                    x_obj_name, y_obj_name, cone, edge=edge, 
+                    lower_bound=LowerBoundInTwoDimension([initial_lb[0], initial_lb[1]])))
         # add a region for the right-most region
         right_most_point = frontier.edges()[-1].right_point()
         if not point_on_ray_in_two_dimension(right_most_point, region.cone().right_extreme_ray()):

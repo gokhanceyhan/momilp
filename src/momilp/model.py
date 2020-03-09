@@ -1,7 +1,7 @@
 """Implements the momilp model"""
 
 import abc
-import copy
+from copy import copy
 from gurobipy import GRB, LinExpr, Model, QuadExpr, read
 from operator import itemgetter
 from src.common.elements import SolverStage
@@ -150,7 +150,7 @@ class GurobiMomilpModel(AbstractModel):
         self._int_var_2_original_lb_and_ub = {var: (var.LB, var.UB) for var in self._y}
         model.update()
 
-    def _scale_model(self, scale_objective_ranges=True):
+    def _scale_model(self, scale_objective_ranges=False):
         """Scales the model
         
         NOTE: If 'scale_objective_ranges' is True, 'Min-Max Scaling' is applied. Otherwise, objective functions are 
@@ -210,7 +210,8 @@ class GurobiMomilpModel(AbstractModel):
         model.setAttr("ModelSense", sense)
         model.update()
 
-    def _set_params(self, log_to_console=False, log_to_file=True, feas_tol=1e-6, mip_gap=1e-6, rel_tol=0.0):
+    def _set_params(
+        self, log_to_console=False, log_to_file=True, feas_tol=1e-6, int_feas_tol=1e-6, mip_gap=1e-6, rel_tol=0.0):
         """Sets the model parameters"""
         model = self._model
         for index in range(self._num_obj):
@@ -218,6 +219,7 @@ class GurobiMomilpModel(AbstractModel):
             model.setAttr("ObjNRelTol", rel_tol)
         model.Params.MIPGap = mip_gap
         model.Params.FeasibilityTol = feas_tol
+        model.Params.IntFeasTol = int_feas_tol
         model.update()
 
     def _validate(self):
@@ -308,7 +310,7 @@ class GurobiMomilpModel(AbstractModel):
         return self._constraint_name_2_constraint
     
     def copy(self):
-        model_copy = copy.copy(self)
+        model_copy = copy(self)
         model_copy._model = self._model.copy()
         return model_copy
 
@@ -375,13 +377,13 @@ class GurobiMomilpModel(AbstractModel):
         constraints_to_remove = [
             self._constraint_name_2_constraint[constraint_name] for constraint_name in constraint_names]
         model.remove(constraints_to_remove)
-        for constraint_name in constraint_names:
+        for constraint_name in copy(constraint_names):
             del self._constraint_name_2_constraint[constraint_name]
             if constraint_name in self._region_defining_constraint_names:
                 self._region_defining_constraint_names.remove(constraint_name)
             if constraint_name in self._tabu_constraint_names:
                 self._tabu_constraint_names.remove(constraint_name)
-        self._model.update()
+        model.update()
 
     def restore_original_bounds_of_integer_variables(self):
         """Removes the posteriori-added bounds on the y-vector if there exist any"""
