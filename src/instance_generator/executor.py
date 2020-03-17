@@ -20,12 +20,14 @@ class InstanceGeneratorApp:
         return parser.parse_args()
 
     def run(self):
-        """Runs the command line application"""
+        """Runs the command line application
+        
+        NOTE: Instance generation supports only Gurobi solver currently."""
         args = self._parse_args()
+        output_dir = args.working_dir
         with open(args.configuration, mode="r") as f:
             conf = json.load(f)
         instance_type = conf["instance_type"]
         params = conf["parameters"]
         num_instances = conf["num_instances"]
-        output_dir = args.working_dir
-        InstanceCreator.create(instance_type, output_dir, num_instances, **params)
+        InstanceCreator.create(instance_type, num_instances, output_dir, **params)

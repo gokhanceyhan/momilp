@@ -176,11 +176,10 @@ class ReportCreator:
         """Restores the original values of the criteria by using the objective inverse scalers"""
         model_sense = self._momilp_model.model_sense()
         objective_index_2_name = self._momilp_model.objective_index_2_name()
-        objective_name_2_inverse_scaler = self._momilp_model.objective_name_2_inverse_scaler()
         sense_coefficient = - model_sense
         return [
-            sense_coefficient * objective_name_2_inverse_scaler[objective_index_2_name[index]](value) for index, value 
-            in enumerate(values)]
+            sense_coefficient * self._momilp_model.objective_scaler(name, inverse=True)(values[index]) for index, name 
+            in objective_index_2_name.items()]
 
     def _set_nondominated_edges_df(self):
         """Sets the data frame of the nondominated edges"""
@@ -210,7 +209,7 @@ class ReportCreator:
             pd.DataFrame(columns=obj_index_2_name.values())
 
     def _to_csv(self, df, report_name):
-        """Converts the data frame to csv file and exports to the output directory"""
+        """Converts the data frame to CSV file and exports to the output directory"""
         file_name = ReportCreator._FILE_NAME_TEMPLATE.format(instance_name=self._instance_name, report_name=report_name)
         df.to_csv(os.path.join(self._output_dir, file_name))
 

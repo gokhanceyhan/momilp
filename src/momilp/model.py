@@ -1,7 +1,7 @@
 """Implements the momilp model"""
 
 import abc
-from copy import copy
+from copy import copy, deepcopy
 from gurobipy import GRB, LinExpr, Model, QuadExpr, read
 from operator import itemgetter
 from src.common.elements import SolverStage
@@ -103,9 +103,9 @@ class GurobiMomilpModel(AbstractModel):
         self._num_obj = num_obj
         self._objective_index_2_name = {}
         self._objective_index_2_priority = {}
-        self._objective_name_2_inverse_scaler = {}
         self._objective_name_2_range = {}
-        self._objective_name_2_scaler = {}
+        self._objective_name_2_scaling_coeff = {}
+        self._objective_name_2_scaling_constant = {}
         self._objective_name_2_variable = {}
         self._primary_objective_index = None
         self._region_defining_constraint_names = []
@@ -187,21 +187,14 @@ class GurobiMomilpModel(AbstractModel):
             obj_max=max_point_sol.point().values()[obj_index]
             obj_min=min_point_sol.point().values()[obj_index]
             scaling_coeff = obj_max - obj_min if scale_objective_ranges else 1
-            scaling_constant = obj_min 
-
-            def obj_scaler(value):
-                return (value - scaling_constant) / scaling_coeff if scaling_coeff > 0 else (value - scaling_constant)
-
-            def obj_inverse_scaler(value):
-                return  value * scaling_coeff + scaling_constant
-
+            self._objective_name_2_scaling_coeff[obj_name] = scaling_coeff
+            scaling_constant = obj_min
+            self._objective_name_2_scaling_constant[obj_name] = scaling_constant
             obj_var = self._objective_name_2_variable[obj_name]
             obj_constraint = self._constraint_name_2_constraint[obj_name]
             coeff = sense * scaling_coeff
             model.chgCoeff(obj_constraint, obj_var, coeff)
             obj_constraint.RHS = scaling_constant
-            self._objective_name_2_scaler[obj_name] = obj_scaler
-            self._objective_name_2_inverse_scaler[obj_name] = obj_inverse_scaler
             # update the bounds of the objective variables
             self._objective_name_2_variable[obj_name].LB = 0.0
             # restore the original priority of the objective
@@ -342,17 +335,26 @@ class GurobiMomilpModel(AbstractModel):
         """Returns the dictionary of objective index to priority"""
         return self._objective_index_2_priority
 
-    def objective_name_2_inverse_scaler(self):
-        """Returns the objective name to inverse scaler"""
-        return self._objective_name_2_inverse_scaler
-
     def objective_name_2_range(self):
         """Returns the objective name to objective range"""
         return self._objective_name_2_range
 
-    def objective_name_2_scaler(self):
-        """Returns the objective name to scaler"""
-        return self._objective_name_2_scaler
+    def objective_name_2_scaling_coeff(self):
+        """Returns the objective name to scaling coefficient"""
+        return self._objective_name_2_scaling_coeff
+
+    def objective_name_2_scaling_constant(self):
+        """Returns the objective name to scaling constant"""
+        return self._objective_name_2_scaling_constant
+
+    def objective_scaler(self, objective_name, inverse=False):
+        """Returns the objective scaler function for the given objective name"""
+        scaling_coeff = self._objective_name_2_scaling_coeff.get(objective_name, 1)
+        scaling_constant = self._objective_name_2_scaling_constant.get(objective_name, 0)
+        if inverse:
+            return lambda value: value * scaling_coeff + scaling_constant
+        return lambda value: (value - scaling_constant) / scaling_coeff if scaling_coeff > 0 else \
+            (value - scaling_constant)
 
     def primary_objective_index(self):
         """Returns the primary objective index"""

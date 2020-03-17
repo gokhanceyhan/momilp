@@ -320,9 +320,11 @@ class ModelBasedDominanceFilter:
     def __init__(self, num_objectives):
         assert num_objectives == 2, "only two objective problems are supported currently"
         self._dominance_model = DominanceModel(num_objectives)
+        self._num_models_solved = 0
 
     def _solve_model(self, objective_index=None):
         """Maximizes the selected criterion in the model, and returns the point corresponding to the optimal solution"""
+        self._num_models_solved += 1
         return self._dominance_model.solve(objective_index=objective_index)
 
     def _reset_model(self):
@@ -375,6 +377,10 @@ class ModelBasedDominanceFilter:
         self._dominance_model.add_point_constraint(point)
         dominated_point = self._solve_model()
         return point if not dominated_point else None
+
+    def num_models_solved(self):
+        """Returns the number of models solved"""
+        return self._num_models_solved
 
     def set_dominated_space(self, frontier, reset=True):
         """Sets the dominated space in the model"""

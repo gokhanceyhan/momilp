@@ -52,7 +52,8 @@ class GurobiMomilpModelTest(TestCase):
                 expected_y_bar = [
                     0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0]
                 self.assert_that(objective_range.max_point_solution().y_bar(), is_(expected_y_bar))
-        for objective_name, objective_scaler in model.objective_name_2_scaler().items():
+        for objective_name in model.objective_index_2_name().values():
+            objective_scaler = model.objective_scaler(objective_name)
             if objective_name == "Set0":
                 self.assert_that(objective_scaler(10), is_(10))
             if objective_name == "Set1":

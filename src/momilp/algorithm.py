@@ -6,19 +6,25 @@ from enum import Enum
 from gurobipy import read
 import operator
 import os
+from time import time
+
 from src.common.elements import ConvexConeInPositiveQuadrant, Edge, EdgeInTwoDimension, EdgeSolution, \
     RayInTwoDimension, FrontierInTwoDimension, FrontierSolution, OptimizationStatus, Point, PointInTwoDimension, \
     PointSolution, SearchRegionInTwoDimension, SliceProblemResult
-from src.momilp.dominance import ModelBasedDominanceFilter
+from src.momilp.dominance import DominanceRules, ModelBasedDominanceFilter
 from src.momilp.model import GurobiMomilpModel
 from src.momilp.search import SearchProblem, SearchSpace, SliceProblem
-from src.momilp.state import Iteration, SolutionState, State
+from src.momilp.state import Iteration, IterationStatistics, SolutionState, State
 from src.momilp.utilities import PointComparisonUtilities, SearchUtilities, TypeConversionUtilities
 
 
 class AbstractAlgorithm(metaclass=abc.ABCMeta):
 
     """Implements abstract class for the algorithm"""
+
+    @abc.abstractmethod
+    def errors(self):
+        """Returns the errors"""
     
     @abc.abstractmethod
     def run(self):
@@ -79,14 +85,18 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
     """Implements the cone-based search algorithm"""
 
     _LOWER_BOUND_DELTA = 1e-3
+    _STARTING_ITERATION_INDEX = 0
 
     def __init__(self, model_file, working_dir, discrete_objective_indices=None, explore_decision_space=False):
         self._discrete_objective_indices = discrete_objective_indices or []
         self._dominance_filter = None
+        self._elapsed_time_in_seconds_for_search_problem = 0
+        self._elapsed_time_in_seconds_for_slice_problem = 0
         self._errors = []
         self._explore_decision_space = explore_decision_space
         self._model_file = model_file
         self._momilp_model = None
+        self._num_milp_solved = 0
         self._objective_index_2_priority = {}
         self._primary_objective_index = None
         self._projected_space_criterion_index_2_criterion_index = {}
@@ -173,39 +183,75 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
                     selected_search_problem_and_index = (search_problem, index)
         return selected_search_problem_and_index
 
+    def _solve_search_problem(self, search_problem):
+        """Solves the search problem"""
+        self._num_milp_solved += 1
+        start = time()
+        result = search_problem.solve()
+        end = time()
+        self._elapsed_time_in_seconds_for_search_problem += end - start
+        return result
+
     def _solve_search_problems(self, iteration_index, search_problems):
         """Solves and returns the search problems"""
         for search_problem in search_problems:
             if search_problem.result():
                 continue
             try:
-                search_problem.solve()
+                self._solve_search_problem(search_problem)
             except BaseException as e:
                 self._errors.append(
                     "the problem '%s' failed with error '%s' in iteration '%s'" % (
                         id(search_problem), e, iteration_index))
-                search_problem.momilp_model().write(os.path.join(self._working_dir, id(search_problem) + ".lp"))     
+                search_problem.momilp_model().write(os.path.join(self._working_dir, str(id(search_problem)) + ".lp"))     
         search_problems[:] = [p for p in search_problems if ConeBasedSearchAlgorithm._is_problem_feasible(p)]
         return search_problems
 
     def _solve_slice_problem(self, selected_point_solution, region, iteration_index):
         """Solves the slice problem and returns the result"""
+        start = time()
         slice_problem = self._state.slice_problem()
         slice_problem.update_model(
             selected_point_solution.y_bar(), 
             primary_objective_value=selected_point_solution.point().values()[self._primary_objective_index], 
             region=region)
         try:
-            return slice_problem.solve()
+            result = slice_problem.solve()
         except BaseException as e:
             raise RuntimeError(
                 "failed to solve the slice problem for integer vector '%s' in iteration '%s'" % (
                     selected_point_solution.y_bar(), iteration_index)) from e
+        else:
+            end = time()
+            self._elapsed_time_in_seconds_for_slice_problem = end - start
+            return result
+
+    def _update_lower_bounds(self, reference_point, search_problems, selected_search_problem_index, delta=0.0):
+        """Updates the lower bounds of the search problems to eliminate the dominated regions by the reference point 
+        and, solves the search problems again if their point solutions are dominated"""
+        for index, search_problem in enumerate(search_problems):
+            if index == selected_search_problem_index:
+                continue
+            # since the search problem are indexed starting from the north-west region
+            update_bound_index = 0 if index > selected_search_problem_index else 1
+            reference_point_value = reference_point.values()[
+                self._projected_space_criterion_index_2_criterion_index[update_bound_index]]
+            region = search_problem.region()
+            lb = region.lower_bound().bounds()
+            needs_update = lb[update_bound_index] < reference_point_value + delta
+            if not needs_update:
+                continue
+            lb[update_bound_index] = reference_point_value + delta
+            point_solution = search_problem.result().point_solution()
+            search_problem.update_model(region=region, keep_previous_tabu_constraints=True) 
+            if DominanceRules.PointToPoint.dominated(point_solution.point(), reference_point):
+                self._solve_search_problem(search_problem)
 
     def _update_state(self, selected_point_solution, frontier, iteration_index):
         """Updates the state"""
         state = self._state
-        if iteration_index > 0:
+        if iteration_index > ConeBasedSearchAlgorithm._STARTING_ITERATION_INDEX:
+            # determine the status of the weakly nondominated points or edges generated in the previous iterations
             previous_selected_point_solution = state.iterations()[iteration_index - 1].selected_point_solution()
             if selected_point_solution.point().values()[self._primary_objective_index] < \
                     previous_selected_point_solution.point().values()[self._primary_objective_index]:
@@ -213,14 +259,35 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             else:
                 state.solution_state().filter_dominated_points_and_edges(
                     self._dominance_filter, frontier, self._projected_space_criterion_index_2_criterion_index)
+        # determine the status of the current frontier
         if frontier.singleton():
             state.solution_state().add_nondominated_point(selected_point_solution)
+            state.solution_state().add_efficient_integer_vector(selected_point_solution.y_bar())
         else:
             edges = frontier.edges()
             for edge in edges:
                 solution_edge = self._convert_edge_in_projected_space_to_edge_in_original_space(edge)
                 state.solution_state().add_weakly_nondominated_edge(
                     EdgeSolution(solution_edge, selected_point_solution.y_bar()))
+        
+    def _add_iteration(self, iteration_index, iteration_time_in_seconds, selected_point_solution):
+        """Creates and add the completed iteration to the list of iterations in the state"""
+        state = self._state
+        num_milp_solved = self._num_milp_solved
+        elapsed_time_in_seconds_for_search_problem = self._elapsed_time_in_seconds_for_search_problem
+        elapsed_time_in_seconds_for_slice_problem = self._elapsed_time_in_seconds_for_slice_problem
+        statistics = IterationStatistics(
+            iteration_time_in_seconds, elapsed_time_in_seconds_for_search_problem, 
+            elapsed_time_in_seconds_for_slice_problem, num_milp_solved)
+        iteration = Iteration(iteration_index, selected_point_solution, statistics)
+        state.iterations().append(iteration)
+        # reset the statistics of the algorithm instance
+        self._num_milp_solved = 0
+        self._elapsed_time_in_seconds_for_search_problem = 0
+        self._elapsed_time_in_seconds_for_slice_problem = 0
+
+    def errors(self):
+        return self._errors
 
     def momilp_model(self):
         """Returns the momilp model"""
@@ -231,8 +298,9 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         search_space = state.search_space()
         search_problems = search_space.search_problems()
         lower_bound_delta = ConeBasedSearchAlgorithm._LOWER_BOUND_DELTA if not self._explore_decision_space else 0.0
-        iteration_index = 0
+        iteration_index = ConeBasedSearchAlgorithm._STARTING_ITERATION_INDEX
         while search_problems:
+            iteration_start_time = time()
             # search all of the regions and remove the infeasible ones
             search_problems = self._solve_search_problems(iteration_index, search_problems)
             if not search_problems:
@@ -248,8 +316,9 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             frontier = slice_problem_result.frontier_solution().frontier()
             y_bar = selected_point_solution.y_bar()
             # update the search space
-            search_space.update_lower_bounds(
-                slice_problem_result.ideal_point(), selected_search_problem_index, delta=lower_bound_delta)
+            self._update_lower_bounds(
+                slice_problem_result.ideal_point(), search_problems, selected_search_problem_index, 
+                delta=lower_bound_delta)
             # update the state
             self._update_state(selected_point_solution, frontier, iteration_index)
             # partition the selected search region
@@ -257,14 +326,19 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             child_search_regions = SearchUtilities.partition_search_region_in_two_dimension(
                 frontier, selected_region, lower_bound_delta=lower_bound_delta)
             # add the integer vector to the list of tabu integer vectors
-            tabu_y_bars = selected_search_problem.tabu_y_bars()[:]
+            tabu_y_bars = selected_search_problem.tabu_y_bars()
             tabu_y_bars.append(y_bar)
             for child_index, region in enumerate(child_search_regions):
+                # MOMILP_TO_DO: MOMILP-11: Investigate the feasibility / efficiency of using the same search problem 
+                # model across different regions
                 search_problem = SearchProblem(self._create_momilp_model())
                 search_problem.update_model(region=region, tabu_y_bars=tabu_y_bars)
                 search_space.add_search_problem(search_problem, index=selected_search_problem_index + 1 + child_index)
             search_space.delete_search_problem(selected_search_problem_index)
+            # create and add the iteration to the state
+            iteration_end_time = time()
+            iteration_time_in_seconds = iteration_end_time - iteration_start_time
+            self._add_iteration(iteration_index, iteration_time_in_seconds, selected_point_solution)
             # update the iteration index
-            state.iterations().append(Iteration(iteration_index, selected_point_solution=selected_point_solution))
             iteration_index += 1
         return self._state

@@ -198,6 +198,7 @@ class GurobiMomilpInstance:
     def _create_objective_functions(self):
         """Creates the objective functions of the model"""
         model = self._model
+        model.setAttr("ModelSense", -1)
         num_objs=self._param_2_value["num_objs"]
         vars = model.getVars()
         obj_coeff_df = pd.concat([self._data.continuous_var_obj_coeff_df(), self._data.integer_var_obj_coeff_df()])
