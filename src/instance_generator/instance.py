@@ -38,7 +38,7 @@ class MomilpInstanceParameterSet:
             constraint_coeff_range=(-1, 20),
             continuous_var_obj_coeff_range=(-10, 10),
             integer_var_obj_coeff_range=(-200, 200),
-            num_binary_vars=10,
+            num_binary_vars=10,  # num of binary variables out of the num of integer vars
             num_constraints=20,
             num_continuous_vars=10,
             num_discrete_objs=1,
