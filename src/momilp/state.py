@@ -27,17 +27,55 @@ class Iteration:
         return self._statistics
 
 
+class IterationStatistics:
+
+    """Implements iteration statistics"""
+
+    def __init__(
+            self, elapsed_time_in_seconds=0, elapsed_time_in_seconds_for_search_problem=0, 
+            elapsed_time_in_seconds_for_slice_problem=0, num_milp_solved=0):
+        self._elapsed_time_in_seconds = elapsed_time_in_seconds
+        self._elapsed_time_in_seconds_for_search_problem = elapsed_time_in_seconds_for_search_problem
+        self._elapsed_time_in_seconds_for_slice_problem = elapsed_time_in_seconds_for_slice_problem
+        self._num_milp_solved = num_milp_solved
+
+    def elapsed_time_in_seconds(self):
+        """Returns the elapsed time in seconds"""
+        return self._elapsed_time_in_seconds
+
+    def elapsed_time_in_seconds_for_search_problem(self):
+        """Returns the elapsed time in seconds to solve the search problems"""
+        return self._elapsed_time_in_seconds_for_search_problem
+
+    def elapsed_time_in_seconds_for_slice_problem(self):
+        """Returns the elapsed time in seconds to solve the slice problems"""
+        return self._elapsed_time_in_seconds_for_slice_problem
+
+    def num_milp_solved(self):
+        """Returns the number of milp models solved in the iteration"""
+        return self._num_milp_solved
+
+
 class SolutionState:
 
     """Implements solution state of the algorithm"""
 
     def __init__(
-            self, nondominated_edges=None, nondominated_points=None, weakly_nondominated_edges=None, 
-            weakly_nondominated_points=None):
+            self, efficient_integer_vectors=None, nondominated_edges=None, nondominated_points=None, 
+            weakly_nondominated_edges=None, weakly_nondominated_points=None):
+        # we store the efficient integer vectors as a set of tuples as the edges in the frontier related to an 
+        # efficient integer vector are stored individually. 
+        self._efficient_integer_vectors = efficient_integer_vectors or set()
         self._nondominated_edges = nondominated_edges or []
         self._nondominated_points = nondominated_points or []
         self._weakly_nondominated_edges = weakly_nondominated_edges or []
         self._weakly_nondominated_points = weakly_nondominated_points or []
+
+    def add_efficient_integer_vector(self, y_bar):
+        """Adds the integer vector 'y_bar' to the list of efficient integer vectors
+        
+        NOTE: 'y_bar' is converted to tuple"""
+        self._efficient_integer_vectors.add(tuple(y_bar))
 
     def add_nondominated_edge(self, edge_solution):
         """Adds the edge solution to the nondominated edges"""
@@ -50,6 +88,10 @@ class SolutionState:
     def add_weakly_nondominated_edge(self, edge_solution):
         """Adds the edge solution to the weakly nondominated edges"""
         self._weakly_nondominated_edges.append(edge_solution)
+
+    def efficient_integer_vectors(self):
+        """Returns the efficient integer vectors"""
+        return self._efficient_integer_vectors
 
     def filter_dominated_points_and_edges(
             self, dominance_filter, frontier, projected_space_criterion_index_2_criterion_index):
@@ -86,9 +128,15 @@ class SolutionState:
     def move_weakly_nondominated_to_nondominated(self):
         """Moves all of the weakly nondominated points or edges to nondominated points or edges"""
         self._nondominated_edges.extend(self._weakly_nondominated_edges)
+        efficient_integer_vectors_of_edge_solutions = [e.y_bar() for e in self._weakly_nondominated_edges]
         self._weakly_nondominated_edges = []
         self._nondominated_points.extend(self._weakly_nondominated_points)
+        efficient_integer_vectors_of_point_solutions = [p.y_bar() for p in self._weakly_nondominated_points]
         self._weakly_nondominated_points = []
+        efficient_integer_vectors = \
+            efficient_integer_vectors_of_edge_solutions + efficient_integer_vectors_of_point_solutions
+        tuples = [tuple(e) for e in efficient_integer_vectors]
+        self._efficient_integer_vectors.update(tuples)
 
     def nondominated_edges(self):
         """Returns the nondominated edges"""

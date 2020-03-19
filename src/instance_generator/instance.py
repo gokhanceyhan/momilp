@@ -38,7 +38,7 @@ class MomilpInstanceParameterSet:
             constraint_coeff_range=(-1, 20),
             continuous_var_obj_coeff_range=(-10, 10),
             integer_var_obj_coeff_range=(-200, 200),
-            num_binary_vars=10,
+            num_binary_vars=10,  # num of binary variables out of the num of integer vars
             num_constraints=20,
             num_continuous_vars=10,
             num_discrete_objs=1,
@@ -162,12 +162,14 @@ class GurobiMomilpInstance:
 
     _CONSTRAINT_NAME_FORMAT = "con_{index}"
     _CONTINUOUS_VARIABLE_NAME_FORMAT = "x_[{index}]"
-    _INSTANCE_NAME_FORMAT = "momilp_{num_objs}_{num_constraints}_{num_integer_vars}.lp"
+    _INSTANCE_NAME_FORMAT = \
+        "momilp_{num_objs}obj_{num_constraints}con_{num_integer_vars}int_{num_binary_vars}bin_{instance_number}.lp"
     _INTEGER_VARIABLE_NAME_FORMAT = "y_[{index}]"
     _OBJECTIVE_FUNCTION_NAME_FORMAT = "z_{index}"
 
-    def __init__(self, param_2_value, np_rand_num_generator_seed=0):
+    def __init__(self, param_2_value, instance_number=1, np_rand_num_generator_seed=0):
         self._data = MomilpInstanceData(param_2_value, np_rand_num_generator_seed=np_rand_num_generator_seed)
+        self._instance_number = instance_number
         self._model = Model()
         self._param_2_value = param_2_value
         self._create()
@@ -196,6 +198,7 @@ class GurobiMomilpInstance:
     def _create_objective_functions(self):
         """Creates the objective functions of the model"""
         model = self._model
+        model.setAttr("ModelSense", -1)
         num_objs=self._param_2_value["num_objs"]
         vars = model.getVars()
         obj_coeff_df = pd.concat([self._data.continuous_var_obj_coeff_df(), self._data.integer_var_obj_coeff_df()])
@@ -224,6 +227,8 @@ class GurobiMomilpInstance:
         instance_name = GurobiMomilpInstance._INSTANCE_NAME_FORMAT.format(
             num_objs=self._param_2_value["num_objs"], 
             num_constraints=self._param_2_value["num_constraints"], 
-            num_integer_vars=self._param_2_value["num_integer_vars"])
+            num_integer_vars=self._param_2_value["num_integer_vars"], 
+            num_binary_vars=self._param_2_value["num_binary_vars"], 
+            instance_number=self._instance_number)
         path = os.path.join(target_dir, instance_name)
         self._model.write(path)

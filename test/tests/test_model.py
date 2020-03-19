@@ -10,12 +10,12 @@ class GurobiMomilpModelTest(TestCase):
 
     """Implements tests for the Gurobi Momilp Model"""
 
-    # TO_DO: Add an example model with at least one objective having negative values at minimum
-    # TO_DO: Add an example model with at least one objective having unbounded minimum
-    # TO_DO: Add an example model with at least one objective having unbounded maximum
-    # TO_DO: Add an exmaple model which is infeasible
+    # MOMILP_TO_DO: Add an example model with at least one objective having negative values at minimum
+    # MOMILP_TO_DO: Add an example model with at least one objective having unbounded minimum
+    # MOMILP_TO_DO: Add an example model with at least one objective having unbounded maximum
+    # MOMILP_TO_DO: Add an exmaple model which is infeasible
 
-    # TO_DO: Test constraint deletion
+    # MOMILP_TO_DO: Test constraint deletion
 
     def setUp(self):
         self._test_data_dir = os.path.join(os.environ["PYTHON_TEST_PATH"], "data") 
@@ -52,7 +52,8 @@ class GurobiMomilpModelTest(TestCase):
                 expected_y_bar = [
                     0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0]
                 self.assert_that(objective_range.max_point_solution().y_bar(), is_(expected_y_bar))
-        for objective_name, objective_scaler in model.objective_name_2_scaler().items():
+        for objective_name in model.objective_index_2_name().values():
+            objective_scaler = model.objective_scaler(objective_name)
             if objective_name == "Set0":
                 self.assert_that(objective_scaler(10), is_(10))
             if objective_name == "Set1":

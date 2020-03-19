@@ -20,7 +20,7 @@ class ConstraintGenerationUtilitiesTest(TestCase):
     def test_create_constraints_for_cone_in_positive_quadrant(self):
         """Tests the constraint creation for a cone in positive quadrant"""
         file_name = os.path.join(self._test_data_dir, "three_obj_blp.lp")
-        momilp_model = GurobiMomilpModel(file_name=file_name)
+        momilp_model = GurobiMomilpModel(file_name)
         Z = momilp_model.Z()
         x_var = Z["Set0"]
         y_var = Z["Set1"]
@@ -50,7 +50,7 @@ class ConstraintGenerationUtilitiesTest(TestCase):
     def test_create_constraint_for_edge_in_two_dimension(self):
         """Tests the constraint creation for an edge in two dimension"""
         file_name = os.path.join(self._test_data_dir, "three_obj_blp.lp")
-        momilp_model = GurobiMomilpModel(file_name=file_name)
+        momilp_model = GurobiMomilpModel(file_name)
         Z = momilp_model.Z()
         x_var = Z["Set0"]
         y_var = Z["Set1"]
@@ -75,7 +75,7 @@ class ConstraintGenerationUtilitiesTest(TestCase):
     def test_create_constraints_for_lower_bound(self):
         """Tests the constraint creation for a lower bound vector in two dimension"""
         file_name = os.path.join(self._test_data_dir, "three_obj_blp.lp")
-        momilp_model = GurobiMomilpModel(file_name=file_name)
+        momilp_model = GurobiMomilpModel(file_name)
         Z = momilp_model.Z()
         x_var = Z["Set0"]
         y_var = Z["Set1"]

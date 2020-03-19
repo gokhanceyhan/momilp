@@ -1,5 +1,6 @@
 """Implements the utilities for the momilp solver"""
 
+from copy import deepcopy
 from gurobipy import Constr, GRB, LinExpr
 import math
 import operator
@@ -67,8 +68,9 @@ class ConstraintGenerationUtilities:
         name = name or str(id(lower_bound))
         name_ = "_".join([ConstraintGenerationUtilities._LOWER_BOUND_CONSTRAINT_NAME_PREFIX, name, "z1"])
         constraints = []
-        constraints.append(
-            momilp_model.add_constraint(x_var, name_, lower_bound.z1(), GRB.GREATER_EQUAL, region_constraint=True))
+        if lower_bound.z1():
+            constraints.append(
+                momilp_model.add_constraint(x_var, name_, lower_bound.z1(), GRB.GREATER_EQUAL, region_constraint=True))
         name_ = "_".join([ConstraintGenerationUtilities._LOWER_BOUND_CONSTRAINT_NAME_PREFIX, name, "z2"])
         if lower_bound.z2():
             constraints.append(
@@ -174,11 +176,10 @@ class ReportCreator:
         """Restores the original values of the criteria by using the objective inverse scalers"""
         model_sense = self._momilp_model.model_sense()
         objective_index_2_name = self._momilp_model.objective_index_2_name()
-        objective_name_2_inverse_scaler = self._momilp_model.objective_name_2_inverse_scaler()
         sense_coefficient = - model_sense
         return [
-            sense_coefficient * objective_name_2_inverse_scaler[objective_index_2_name[index]](value) for index, value 
-            in enumerate(values)]
+            sense_coefficient * self._momilp_model.objective_scaler(name, inverse=True)(values[index]) for index, name 
+            in objective_index_2_name.items()]
 
     def _set_nondominated_edges_df(self):
         """Sets the data frame of the nondominated edges"""
@@ -208,7 +209,7 @@ class ReportCreator:
             pd.DataFrame(columns=obj_index_2_name.values())
 
     def _to_csv(self, df, report_name):
-        """Converts the data frame to csv file and exports to the output directory"""
+        """Converts the data frame to CSV file and exports to the output directory"""
         file_name = ReportCreator._FILE_NAME_TEMPLATE.format(instance_name=self._instance_name, report_name=report_name)
         df.to_csv(os.path.join(self._output_dir, file_name))
 
@@ -268,12 +269,14 @@ class SearchUtilities:
         return RayInTwoDimension(math.degrees(math.atan(tan)), from_point)
 
     @staticmethod
-    def partition_search_region_in_two_dimension(frontier, region, lower_bound_delta=0.0):
+    def partition_search_region_in_two_dimension(initial_frontier, initial_region, lower_bound_delta=0.0):
         """Partition the search region in two dimension
         
         NOTE: Eliminates the subset of the region dominated by the frontier, and returns the relatively nondominated 
         sub-regions defined by the rays passing thorugh the extreme points of the frontier. Returned regions are in the 
         order of cones with left extreme rays having non-increasing angles with the x-axis (index 0)"""
+        frontier = deepcopy(initial_frontier)
+        region = deepcopy(initial_region)
         assert isinstance(frontier, FrontierInTwoDimension)
         assert isinstance(region, SearchRegionInTwoDimension)
         x_obj_name = region.x_obj_name()
@@ -334,7 +337,8 @@ class SearchUtilities:
             cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
             regions.append(
                 SearchRegionInTwoDimension(
-                    x_obj_name, y_obj_name, cone, edge=edge, lower_bound=LowerBoundInTwoDimension(initial_lb)))
+                    x_obj_name, y_obj_name, cone, edge=edge, 
+                    lower_bound=LowerBoundInTwoDimension([initial_lb[0], initial_lb[1]])))
         # add a region for the right-most region
         right_most_point = frontier.edges()[-1].right_point()
         if not point_on_ray_in_two_dimension(right_most_point, region.cone().right_extreme_ray()):
