@@ -12,6 +12,8 @@ from src.momilp.algorithm import AlgorithmFactory
 from src.momilp.model import GurobiMomilpModel
 from src.momilp.utilities import ReportCreator
 
+logging.getLogger().setLevel(logging.INFO)
+
 
 class ExecutionStatistics:
 
@@ -138,7 +140,7 @@ class Executor:
         """Executes the momilp solver"""
         for model_file in self._model_files:
             start_time = time.time()
-            algorithm = AlgorithmFactory.create(model_file, working_dir)
+            algorithm = AlgorithmFactory.create(model_file, working_dir, explore_decision_space=True)
             state = algorithm.run()
             elapsed_time_in_seconds = int(time.time() - start_time)
             instance_name = os.path.splitext(os.path.basename(model_file))[0]

@@ -18,6 +18,7 @@ class Problem(metaclass=abc.ABCMeta):
     """Implements abstact problem class"""
 
     _SUPPORTED_SEARCH_REGION_NUM_DIMENSIONS = [2]
+    _TABU_CONSTRAINT_NAME_TEMPLATE = "tabu_{idx}"
     _UNSUPPORTED_SEARCH_REGION_DIMENSION_ERROR = \
         "the search region dimension of '%s' is not supported in the problem, the supported dimensions are '%s'"
 
@@ -39,11 +40,29 @@ class Problem(metaclass=abc.ABCMeta):
             ConstraintGenerationUtilities.create_constraints_for_lower_bound_in_two_dimension(
                 momilp_model, region.lower_bound(), x_var, y_var, name=region.id())
 
+    def _add_tabu_constraint(self, y_bars):
+        """Adds the tabu-constraints to the model for the given integer vectors"""
+        momilp_model = self._momilp_model
+        for index, y_bar in enumerate(y_bars):
+            constraint_name = Problem._TABU_CONSTRAINT_NAME_TEMPLATE.format(idx=index)            
+            ConstraintGenerationUtilities.create_tabu_constraint(momilp_model, constraint_name, y_bar)
+
     def _remove_region_defining_constraints(self):
         """Removes all the region defining constraints from the model"""
         momilp_model = self._momilp_model
         region_defining_constraint_names = momilp_model.region_defining_constraint_names()
         momilp_model.remove_constraint(region_defining_constraint_names)
+
+    def _remove_tabu_constraints(self):
+        """Removes the tabu-constraints from the model"""
+        momilp_model = self._momilp_model
+        tabu_constraint_names = momilp_model.tabu_constraint_names()
+        momilp_model.remove_constraint(tabu_constraint_names)
+
+    def _reset_model(self):
+        """Removes all the previous tabu and region-defining constraints from the model"""
+        self._remove_tabu_constraints()
+        self._remove_region_defining_constraints()
 
     @staticmethod
     def _validate_search_region(region):
@@ -68,8 +87,8 @@ class Problem(metaclass=abc.ABCMeta):
         """Returns the problem result"""
     
     @abc.abstractmethod
-    def update_model(self, **kwargs):
-        """Updates the model"""
+    def update_problem(self, *args, **kwargs):
+        """Updates the problem"""
 
     @abc.abstractmethod
     def solve(self):
@@ -80,28 +99,11 @@ class SearchProblem(Problem):
 
     """Implements search problem to find nondominated points"""
 
-    _TABU_CONSTRAINT_NAME_TEMPLATE = "tabu_{idx}"
-
     def __init__(self, momilp_model):
         super(SearchProblem, self).__init__(momilp_model)
         self._tabu_y_bars = []
         self._region = None
         self._result = None
-
-    def _add_tabu_constraint(self, y_bars):
-        """Adds the tabu-constraints to the model for the given integer vectors"""
-        momilp_model = self._momilp_model
-        for y_bar in y_bars:
-            constraint_name = SearchProblem._TABU_CONSTRAINT_NAME_TEMPLATE.format(idx=len(self._tabu_y_bars))            
-            ConstraintGenerationUtilities.create_tabu_constraint(momilp_model, constraint_name, y_bar)
-            self._tabu_y_bars.append(y_bar)
-
-    def _remove_tabu_constraints(self):
-        """Removes the tabu-constraints in the model"""
-        momilp_model = self._momilp_model
-        tabu_constraint_names = momilp_model.tabu_constraint_names()
-        momilp_model.remove_constraint(tabu_constraint_names)
-        del self._tabu_y_bars[:]
 
     def num_tabu_constraints(self):
         """Returns the number of tabu-constraints"""
@@ -115,6 +117,10 @@ class SearchProblem(Problem):
         return self._result
 
     def solve(self):
+        # the model has to be reset since the same model is copied over many search regions
+        self._reset_model()
+        self._add_region_defining_constraints_in_two_dimension(self._region)
+        self._add_tabu_constraint(self._tabu_y_bars)
         momilp_model = self._momilp_model
         momilp_model.solve()
         self._result = ModelQueryUtilities.query_optimal_solution(momilp_model.problem(), momilp_model.y())
@@ -124,19 +130,14 @@ class SearchProblem(Problem):
         """Returns the tabu y_bars"""
         return self._tabu_y_bars
 
-    def update_model(
-            self, keep_previous_region_constraints=False, keep_previous_tabu_constraints=False, region=None, 
-            tabu_y_bars=None):
-        if not keep_previous_region_constraints:
-            self._remove_region_defining_constraints()
+    def update_problem(self, keep_previous_tabu_constraints=False, region=None, tabu_y_bars=None):
+        if not keep_previous_tabu_constraints:
+            self._tabu_y_bars = []
+        tabu_y_bars = tabu_y_bars or []
+        self._tabu_y_bars.extend(tabu_y_bars)
         if region:
             SearchProblem._validate_search_region(region)
-            self._add_region_defining_constraints_in_two_dimension(region)
             self._region = region
-        if not keep_previous_tabu_constraints:
-            self._remove_tabu_constraints()
-        if tabu_y_bars:
-            self._add_tabu_constraint(tabu_y_bars)
 
 
 class SearchSpace:
@@ -185,6 +186,7 @@ class SliceProblem(Problem):
         super(SliceProblem, self).__init__(momilp_model)
         self._primary_objective_index = momilp_model.primary_objective_index()
         self._primary_objective_value = None
+        self._region = None
         self._result = None
         self._slice_prob_obj_index_2_original_prob_obj_index = slice_prob_obj_index_2_original_prob_obj_index
         self._y_bar = None
@@ -234,6 +236,13 @@ class SliceProblem(Problem):
         """Relaxes the integrality constraints in the model"""
         self._momilp_model.relax()
 
+    def _reset_model(self):
+        """Removes all the previous tabu and region-defining constraints from the model, and restores the original 
+        variable bounds"""
+        self._remove_region_defining_constraints()
+        self._remove_tabu_constraints()
+        self._momilp_model.restore_original_bounds_of_integer_variables()
+
     def _validate_integer_vector(self, y_bar):
         """Validates the integer vector"""
         y = self._momilp_model.y()
@@ -253,6 +262,10 @@ class SliceProblem(Problem):
         return self._slice_prob_obj_index_2_original_prob_obj_index
 
     def solve(self):
+        self._reset_model()
+        self._validate_integer_vector(self._y_bar)
+        self._momilp_model.fix_integer_vector(self._y_bar)
+        self._add_region_defining_constraints_in_two_dimension(self._region)
         model = self._momilp_model.problem()
         solver = BolpDichotomicSearchWithGurobiSolver(model)
         solver.solve()
@@ -271,14 +284,9 @@ class SliceProblem(Problem):
         self._result = SliceProblemResult(frontier_solution, ideal_point)
         return self._result
 
-    def update_model(self, y_bar, keep_previous_region_constraints=False, primary_objective_value=0, region=None):
+    def update_problem(self, y_bar, primary_objective_value=0, region=None):
         self._primary_objective_value = primary_objective_value
         self._y_bar = y_bar
-        self._momilp_model.restore_original_bounds_of_integer_variables()
-        self._validate_integer_vector(y_bar)
-        self._momilp_model.fix_integer_vector(y_bar)
-        if not keep_previous_region_constraints:
-            self._remove_region_defining_constraints()
         if region:
             SliceProblem._validate_search_region(region)
-            self._add_region_defining_constraints_in_two_dimension(region)
+            self._region = region
