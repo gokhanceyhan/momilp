@@ -45,7 +45,7 @@ class BolpDichotomicSearchWithGurobiSolver(MolpSolver):
             model.optimize()
             values, _ = ModelQueryUtilities.query_optimal_objective_values(model)
             new_point = PointInTwoDimension(values)
-            if points and points[-1] == new_point:
+            if points and self._isclose(points[-1], new_point):
                 continue
             points.append(new_point)
         self._extreme_supported_nondominated_points = points

@@ -30,7 +30,7 @@ class SearchProblemTest(TestCase):
         y_opt = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         self.assert_that(point_solution.y_bar(), is_(y_opt))
         # restrict the optimal integer vector
-        search_problem.update_model(tabu_y_bars=[y_opt])
+        search_problem.update_problem(tabu_y_bars=[y_opt])
         self.assert_that(search_problem.num_tabu_constraints(), is_(1))
         self.assert_that(model.constraint_name_2_constraint(), has_key("tabu_0"))
         result = search_problem.solve()
@@ -39,7 +39,7 @@ class SearchProblemTest(TestCase):
         y_opt = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         self.assert_that(point_solution.y_bar(), is_(y_opt))
         # add one more constraint
-        search_problem.update_model(keep_previous_tabu_constraints=True, tabu_y_bars=[y_opt])
+        search_problem.update_problem(keep_previous_tabu_constraints=True, tabu_y_bars=[y_opt])
         self.assert_that(search_problem.num_tabu_constraints(), is_(2))
         self.assert_that(model.constraint_name_2_constraint(), has_key("tabu_1"))
         result = search_problem.solve()
@@ -48,7 +48,7 @@ class SearchProblemTest(TestCase):
         y_opt = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         self.assert_that(point_solution.y_bar(), is_(y_opt))
         # add a single constraint, and remove the older ones
-        search_problem.update_model(tabu_y_bars=[y_opt])
+        search_problem.update_problem(tabu_y_bars=[y_opt])
         self.assert_that(search_problem.num_tabu_constraints(), is_(1))
         self.assert_that(model.constraint_name_2_constraint(), has_key("tabu_0"))
         result = search_problem.solve()
@@ -68,7 +68,7 @@ class SearchProblemTest(TestCase):
         y_opt = [1.0, 1.0, 6.0, 1.0, 1.0, 1.0]
         self.assert_that(point_solution.y_bar(), is_(y_opt))
         # restrict the optimal integer vector
-        search_problem.update_model(tabu_y_bars=[y_opt])
+        search_problem.update_problem(tabu_y_bars=[y_opt])
         self.assert_that(search_problem.num_tabu_constraints(), is_(1))
         self.assert_that(model.constraint_name_2_constraint(), has_key("tabu_0"))
         result = search_problem.solve()
@@ -98,7 +98,7 @@ class SliceProblemTest(TestCase):
         lb = LowerBoundInTwoDimension([6.5, 6])
         region = SearchRegionInTwoDimension("Set0", "Set1", cone, edge=edge, lower_bound=lb)
         y_bar = [1] * 12 + [0] * 8
-        slice_problem.update_model(region=region, y_bar=y_bar)
+        slice_problem.update_problem(region=region, y_bar=y_bar)
         slice_problem.solve()
         result = slice_problem.result()
         self.assert_that(result.frontier_solution().frontier().point(), is_(PointInTwoDimension([7, 6])))
@@ -109,7 +109,7 @@ class SliceProblemTest(TestCase):
         model = GurobiMomilpModel(file_name, scale=False)
         slice_problem = SliceProblem(model, self._slice_prob_obj_index_2_original_obj_index)
         y_bar = [1] * 12 + [0] * 8
-        slice_problem.update_model(y_bar=y_bar)
+        slice_problem.update_problem(y_bar=y_bar)
         slice_problem.solve()
         result = slice_problem.result()
         self.assert_that(result.frontier_solution().frontier().point(), is_(PointInTwoDimension([7, 6])))

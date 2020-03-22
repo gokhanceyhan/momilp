@@ -37,16 +37,21 @@ class MomilpInstanceParameterSet:
             self,
             constraint_coeff_range=(-1, 20),
             continuous_var_obj_coeff_range=(-10, 10),
+            # if 'True', all the integer variables have zero coefficient in the discrete objectives
+            dummy_discrete_obj=True,
             integer_var_obj_coeff_range=(-200, 200),
-            num_binary_vars=10,  # num of binary variables out of the num of integer vars
+            # num of binary variables out of the num of integer vars
+            num_binary_vars=10,
             num_constraints=20,
             num_continuous_vars=10,
+            # starting from the objective function at the first index
             num_discrete_objs=1,
             num_integer_vars=10,
             num_objs=3,
             rhs_range=(50, 100)):
         self.constraint_coeff_range = constraint_coeff_range
         self.continuous_var_obj_coeff_range = continuous_var_obj_coeff_range
+        self.dummy_discrete_obj = dummy_discrete_obj
         self.integer_var_obj_coeff_range = integer_var_obj_coeff_range
         self.num_binary_vars = num_binary_vars
         self.num_constraints = num_constraints
@@ -66,6 +71,8 @@ class MomilpInstanceData:
     """Implements a MOMILP instance data
     
     NOTE: Based on the data generation schema defined in Mavrotas and Diakoulaki (2005) and Boland et al. (2015)"""
+
+    _INTEGER_VARIABLE_SUM_CONTRAINT_RHS_MULTIPLIER = 1/3
 
     def __init__(self, param_2_value, np_rand_num_generator_seed=0):
         np.random.seed(np_rand_num_generator_seed)
@@ -116,18 +123,24 @@ class MomilpInstanceData:
     def _create_integer_var_obj_coeff_df(self):
         """Create the data frame of the objective function coefficients of the integer variables"""
         num_objs = self._param_2_value["num_objs"]
+        num_discrete_objs = self._param_2_value["num_discrete_objs"]
+        discrete_obj_indices = [i for i in range(num_discrete_objs)]
+        dummy_discrete_obj = self._param_2_value["dummy_discrete_obj"]
         num_vars = self._param_2_value["num_integer_vars"]
         (low, high) = self._param_2_value["integer_var_obj_coeff_range"]
-        self._integer_var_obj_coeff_df = pd.DataFrame(
-            np.random.random_integers(low, high, size=(num_vars, num_objs)))
+        df = pd.DataFrame(np.random.random_integers(low, high, size=(num_vars, num_objs)))
+        if dummy_discrete_obj:
+            df.iloc[:, discrete_obj_indices] = 0
+        self._integer_var_obj_coeff_df = df
 
     def _create_rhs(self):
         """Creates the series of the right-hand-side values of the constraints"""
         num_constraints = self._param_2_value["num_constraints"]
         num_integer_vars = self._param_2_value["num_integer_vars"]
         (low, high) = self._param_2_value["rhs_range"]
+        integer_var_sum_rhs = num_integer_vars * MomilpInstanceData._INTEGER_VARIABLE_SUM_CONTRAINT_RHS_MULTIPLIER
         self._rhs = pd.Series(np.random.random_integers(low, high=high, size=num_constraints - 1)).append(
-            pd.Series(num_integer_vars / 3)).reset_index(drop=True)
+            pd.Series(integer_var_sum_rhs)).reset_index(drop=True)
 
     def constraint_coeff_df(self):
         """Returns the constraint coefficient data frame
