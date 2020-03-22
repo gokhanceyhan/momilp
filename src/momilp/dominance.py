@@ -3,6 +3,8 @@
 from enum import Enum
 import numpy as np
 from gurobipy import GRB, Model, QuadExpr
+from time import time
+
 from src.common.elements import EdgeInTwoDimension, FrontierInTwoDimension, Point, PointInTwoDimension
 from src.molp.utilities import ModelQueryUtilities as molp_query_utilities
 from src.momilp.utilities import ConstraintGenerationUtilities
@@ -320,17 +322,26 @@ class ModelBasedDominanceFilter:
     def __init__(self, num_objectives):
         assert num_objectives == 2, "only two objective problems are supported currently"
         self._dominance_model = DominanceModel(num_objectives)
+        self._elapsed_time_in_seconds = 0
         self._num_models_solved = 0
 
     def _solve_model(self, objective_index=None):
         """Maximizes the selected criterion in the model, and returns the point corresponding to the optimal solution"""
         self._num_models_solved += 1
-        return self._dominance_model.solve(objective_index=objective_index)
+        start = time()
+        result = self._dominance_model.solve(objective_index=objective_index)
+        end = time()
+        self._elapsed_time_in_seconds += end - start
+        return result
 
     def _reset_model(self):
         """Removes the constraints related to a previous dominance check if there exist any"""
         self._dominance_model.remove_dominated_space_constraints()
         self._dominance_model.remove_checked_element_constraints()
+
+    def elapsed_time_in_seconds(self):
+        """Returns the elapsed time in seconds"""
+        return self._elapsed_time_in_seconds
 
     def filter_edge(self, edge):
         """Filters the dominated points in the edge, and returns the updated edges"""

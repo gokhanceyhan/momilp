@@ -21,14 +21,18 @@ class ExecutionStatistics:
 
     def __init__(
             self, algorithm_name, instance_name, elapsed_time_in_seconds=0, 
+            elapsed_time_in_seconds_for_dominance_test_problem=0, 
             elapsed_time_in_seconds_for_search_problem=0, 
-            elapsed_time_in_seconds_for_slice_problem=0, num_efficient_integer_vectors=0, 
+            elapsed_time_in_seconds_for_slice_problem=0, num_dominance_test_model_solved=0, 
+            num_efficient_integer_vectors=0, 
             num_iterations=0, num_milp_solved=0, num_nd_edges=0, num_nd_points=0):
         self._algorithm_name = algorithm_name
         self._elapsed_time_in_seconds = elapsed_time_in_seconds
+        self._elapsed_time_in_seconds_for_dominance_test_problem = elapsed_time_in_seconds_for_dominance_test_problem
         self._elapsed_time_in_seconds_for_search_problem = elapsed_time_in_seconds_for_search_problem
         self._elapsed_time_in_seconds_for_slice_problem = elapsed_time_in_seconds_for_slice_problem
         self._instance_name = instance_name
+        self._num_dominance_test_model_solved = num_dominance_test_model_solved
         self._num_efficient_integer_vectors = num_efficient_integer_vectors
         self._num_iterations = num_iterations
         self._num_milp_solved = num_milp_solved
@@ -43,6 +47,10 @@ class ExecutionStatistics:
         """Returns the elapsed time in seconds"""
         return self._elapsed_time_in_seconds
 
+    def elapsed_time_in_seconds_for_dominance_test_problem(self):
+        """Returns the elapsed time in seconds in dominance test problem solving"""
+        return self._elapsed_time_in_seconds_for_dominance_test_problem
+
     def elapsed_time_in_seconds_for_search_problem(self):
         """Returns the elapsed time in seconds in search problem solving"""
         return self._elapsed_time_in_seconds_for_search_problem
@@ -54,6 +62,10 @@ class ExecutionStatistics:
     def instance_name(self):
         """Returns the name of the instance"""
         return self._instance_name
+
+    def num_dominance_test_model_solved(self):
+        """Returns the number of dominance test models solved"""
+        return self._num_dominance_test_model_solved
 
     def num_efficient_integer_vectors(self):
         """Returns the number of efficient integer vectors generated"""
@@ -81,12 +93,14 @@ class ExecutionStatistics:
             "instance": self._instance_name,
             "y_eff": self._num_efficient_integer_vectors,
             "iter": self._num_iterations,
-            "milp": self._num_milp_solved,
+            "num_milp": self._num_milp_solved,
             "nd_edges": self._num_nd_edges,
             "nd_points": self._num_nd_points,
             "time (sec)": self._elapsed_time_in_seconds,
-            "search_time (sec)": self._elapsed_time_in_seconds_for_search_problem,
-            "slice_time (sec)": self._elapsed_time_in_seconds_for_slice_problem
+            "time_search (sec)": self._elapsed_time_in_seconds_for_search_problem,
+            "time_slice (sec)": self._elapsed_time_in_seconds_for_slice_problem,
+            "time_dom_test (sec)": self._elapsed_time_in_seconds_for_dominance_test_problem,
+            "num_dom_lp": self._num_dominance_test_model_solved
         }
 
 
@@ -110,26 +124,34 @@ class Executor:
             raise ValueError(error_message)
         self._solver_package = solver_package
 
-    def _collect_statistics(self, algorithm_name, elapsed_time_in_seconds, instance_name, state):
+    def _collect_statistics(self, algorithm, elapsed_time_in_seconds, instance_name, state):
         """Collects the statistics for the algorithm and the instance"""
+        algorithm_name = algorithm.__class__.__name__
         iterations = state.iterations()
         num_iterations = len(iterations)
         iteration_statistics = [iteration.statistics() for iteration in iterations]
+        # model count statistics
         num_milp_solved = sum([s.num_milp_solved() for s in iteration_statistics])
+        num_dominance_test_model_solved = algorithm.dominance_filter().num_models_solved()
+        # elapsed time statistics
+        time_precision = Executor._NUM_DECIMALS_FOR_TIME_IN_SECONDS
         elapsed_time_in_seconds_for_search_problem = round(
-            sum([s.elapsed_time_in_seconds_for_search_problem() for s in iteration_statistics]), 
-            Executor._NUM_DECIMALS_FOR_TIME_IN_SECONDS)
+            sum([s.elapsed_time_in_seconds_for_search_problem() for s in iteration_statistics]), time_precision)
         elapsed_time_in_seconds_for_slice_problem = round(
-            sum([s.elapsed_time_in_seconds_for_slice_problem() for s in iteration_statistics]), 
-            Executor._NUM_DECIMALS_FOR_TIME_IN_SECONDS)
+            sum([s.elapsed_time_in_seconds_for_slice_problem() for s in iteration_statistics]), time_precision)
+        elapsed_time_in_seconds_for_dominance_test_problem = round(
+            algorithm.dominance_filter().elapsed_time_in_seconds(), time_precision)
+        # solution state statistics
         solution_state = state.solution_state()
         num_nd_edges = len(solution_state.nondominated_edges())
         num_nd_points = len(solution_state.nondominated_points())
         num_efficient_integer_vectors = len(solution_state.efficient_integer_vectors())
         statistics = ExecutionStatistics(
             algorithm_name, instance_name, elapsed_time_in_seconds=elapsed_time_in_seconds, 
+            elapsed_time_in_seconds_for_dominance_test_problem=elapsed_time_in_seconds_for_dominance_test_problem,
             elapsed_time_in_seconds_for_search_problem=elapsed_time_in_seconds_for_search_problem, 
             elapsed_time_in_seconds_for_slice_problem=elapsed_time_in_seconds_for_slice_problem, 
+            num_dominance_test_model_solved=num_dominance_test_model_solved,
             num_efficient_integer_vectors=num_efficient_integer_vectors, num_iterations=num_iterations, 
             num_milp_solved=num_milp_solved, num_nd_edges=num_nd_edges, num_nd_points=num_nd_points)
         self._statistics.append(statistics)
@@ -149,7 +171,7 @@ class Executor:
             instance_name = os.path.splitext(os.path.basename(model_file))[0]
             report_creator = ReportCreator(algorithm.momilp_model(), state, instance_name, working_dir)
             report_creator.create()
-            self._collect_statistics(algorithm.__class__.__name__, elapsed_time_in_seconds, instance_name, state)
+            self._collect_statistics(algorithm, elapsed_time_in_seconds, instance_name, state)
         self._export_statistics(working_dir)
         if algorithm.errors():
             logging.warning("\n".join(algorithm.errors()))

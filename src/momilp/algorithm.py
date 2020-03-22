@@ -290,6 +290,10 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         self._elapsed_time_in_seconds_for_search_problem = 0
         self._elapsed_time_in_seconds_for_slice_problem = 0
 
+    def dominance_filter(self):
+        """Returns the dominance filter"""
+        return self._dominance_filter
+
     def errors(self):
         return self._errors
 
