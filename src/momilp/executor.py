@@ -96,6 +96,7 @@ class Executor:
 
     _EXECUTION_STATISTICS_REPORT_FILE_NAME = "summary.csv"
     _MODEL_CLASS_TO_SOLVER_PACKAGE = {Model: SolverPackage.GUROBI}
+    _NUM_DECIMALS_FOR_TIME_IN_SECONDS = 2
     _SUPPORTED_SOLVER_PACKAGES = [SolverPackage.GUROBI]
     _UNSUPPORTED_SOLVER_PACKAGE_ERROR_MESSAGE = \
         "the solver package is not supported, define the model in one of the '{supported_solvers!s}' solver packages"
@@ -115,10 +116,12 @@ class Executor:
         num_iterations = len(iterations)
         iteration_statistics = [iteration.statistics() for iteration in iterations]
         num_milp_solved = sum([s.num_milp_solved() for s in iteration_statistics])
-        elapsed_time_in_seconds_for_search_problem = int(sum(
-            [s.elapsed_time_in_seconds_for_search_problem() for s in iteration_statistics]))
-        elapsed_time_in_seconds_for_slice_problem = int(sum(
-            [s.elapsed_time_in_seconds_for_slice_problem() for s in iteration_statistics]))
+        elapsed_time_in_seconds_for_search_problem = round(
+            sum([s.elapsed_time_in_seconds_for_search_problem() for s in iteration_statistics]), 
+            Executor._NUM_DECIMALS_FOR_TIME_IN_SECONDS)
+        elapsed_time_in_seconds_for_slice_problem = round(
+            sum([s.elapsed_time_in_seconds_for_slice_problem() for s in iteration_statistics]), 
+            Executor._NUM_DECIMALS_FOR_TIME_IN_SECONDS)
         solution_state = state.solution_state()
         num_nd_edges = len(solution_state.nondominated_edges())
         num_nd_points = len(solution_state.nondominated_points())
@@ -142,7 +145,7 @@ class Executor:
             start_time = time.time()
             algorithm = AlgorithmFactory.create(model_file, working_dir, explore_decision_space=True)
             state = algorithm.run()
-            elapsed_time_in_seconds = int(time.time() - start_time)
+            elapsed_time_in_seconds = round(time.time() - start_time, Executor._NUM_DECIMALS_FOR_TIME_IN_SECONDS)
             instance_name = os.path.splitext(os.path.basename(model_file))[0]
             report_creator = ReportCreator(algorithm.momilp_model(), state, instance_name, working_dir)
             report_creator.create()
