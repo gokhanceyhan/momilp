@@ -49,6 +49,7 @@ class MomilpInstanceParameterSet:
             num_discrete_objs=1,
             num_integer_vars=10,
             num_objs=3,
+            obj_sense="max",
             rhs_range=(50, 100)):
         self.constraint_coeff_range = constraint_coeff_range
         self.continuous_var_obj_coeff_range = continuous_var_obj_coeff_range
@@ -60,6 +61,7 @@ class MomilpInstanceParameterSet:
         self.num_discrete_objs = num_discrete_objs
         self.num_integer_vars = num_integer_vars
         self.num_objs = num_objs
+        self.obj_sense = obj_sense
         self.rhs_range = rhs_range
 
     def to_dict(self):
@@ -306,7 +308,10 @@ class GurobiMomilpInstance(MomilpInstance):
     _CONSTRAINT_NAME_FORMAT = "con_{index}"
     _CONTINUOUS_VARIABLE_NAME_FORMAT = "x_[{index}]"
     _INTEGER_VARIABLE_NAME_FORMAT = "y_[{index}]"
+    _MAXIMIZATION_OBJECTIVE_CONFIGURATION_VALUE = "max"
+    _MINIMIZATION_OBJECTIVE_CONFIGURATION_VALUE = "min"
     _OBJECTIVE_FUNCTION_NAME_FORMAT = "z_{index}"
+    _OBJECTIVE_SENSE_CONFIGURATION_NAME = "obj_sense"
 
     def __init__(self, data, param_2_value):
         self._data = data
@@ -338,7 +343,9 @@ class GurobiMomilpInstance(MomilpInstance):
     def _create_objective_functions(self):
         """Creates the objective functions of the model"""
         model = self._model
-        model.setAttr("ModelSense", -1)
+        model_sense = -1 if self._param_2_value[GurobiMomilpInstance._OBJECTIVE_SENSE_CONFIGURATION_NAME] == \
+            GurobiMomilpInstance._MAXIMIZATION_OBJECTIVE_CONFIGURATION_VALUE else 1
+        model.setAttr("ModelSense", model_sense)
         num_objs=self._param_2_value["num_objs"]
         vars = model.getVars()
         obj_coeff_df = pd.concat([self._data.continuous_var_obj_coeff_df(), self._data.integer_var_obj_coeff_df()])

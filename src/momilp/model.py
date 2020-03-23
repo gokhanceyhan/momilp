@@ -88,7 +88,7 @@ class GurobiMomilpModel(AbstractModel):
 
     def __init__(
             self, model_file, discrete_objective_indices=None, log_to_console=False, log_to_file=True, num_obj=None, 
-            scale=True):
+            scale=False):
         self._constraint_name_2_constraint = {}
         self._discrete_objective_indices = discrete_objective_indices or []
         self._int_var_2_original_lb_and_ub = {}

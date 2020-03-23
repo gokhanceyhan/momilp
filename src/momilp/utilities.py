@@ -158,10 +158,32 @@ class ModelQueryUtilities:
         return SearchProblemResult(PointSolution(Point(values), y_bar), status)
 
 
+class PointComparisonUtilities:
+
+    """Implements point comparison utilities"""
+
+    @staticmethod
+    def compare_to(base_point, compared_point, value_index_2_priority):
+        """Compares the points in lexicographic order specified by value index to priority dictionary
+        
+        Returns 0, if both points have equal values, 1 if base point is lexicographically greater than the compared 
+        point, else -1"""
+        assert len(base_point.values()) == len(compared_point.values())
+        indicies_in_lexicographic_order = [
+            item[0] for item in sorted(value_index_2_priority.items(), key=operator.itemgetter(1), reverse=True)]
+        for index in indicies_in_lexicographic_order:
+            if base_point.values()[index] > compared_point.values()[index]:
+                return 1
+            if base_point.values()[index] < compared_point.values()[index]:
+                return -1
+        return 0
+
+
 class ReportCreator:
 
     """Implements the report utilities"""
 
+    _CONNECTED_POINT_INDICATOR_COLUMN_NAME = "connected"
     _FILE_NAME_TEMPLATE = "{instance_name}_{report_name}.csv"
     _NONDOMINATED_SET_REPORT_NAME = "nds"
 
@@ -184,16 +206,37 @@ class ReportCreator:
 
     def _set_nondominated_edges_df(self):
         """Sets the data frame of the nondominated edges"""
+        model_sense = self._momilp_model.model_sense()
         solution_state = self._state.solution_state()
         obj_index_2_name = self._momilp_model.objective_index_2_name()
         edges = [nondominated_edge.edge() for nondominated_edge in solution_state.nondominated_edges()]
-        records = []
+        updated_edges = []
         for edge in edges:
             start_point_values = self._restore_original_values(edge.start_point().values())
             end_point_values = self._restore_original_values(edge.end_point().values())
-            records.append(
-                {obj_index_2_name[index]: value for index, value in 
-                 enumerate(zip(start_point_values, end_point_values))})
+            # we need to switch the start and end points in case it is a minimization problem
+            start_point, end_point = (Point(start_point_values), Point(end_point_values)) if model_sense == -1 else \
+                (Point(end_point_values), Point(start_point_values))
+            start_inclusive, end_inclusive = (edge.start_inclusive(), edge.end_inclusive()) if model_sense == -1 else \
+                (edge.end_inclusive(), edge.start_inclusive())
+            updated_edge = Edge(start_point, end_point, end_inclusive=end_inclusive, start_inclusive=start_inclusive)
+            updated_edges.append(updated_edge)
+        sorted_edges = self._sort_nondominated_edges(updated_edges)
+        records = []
+        for index, edge in enumerate(sorted_edges):
+            start_point_values = edge.start_point().values()
+            start_point_column_name_2_value = {
+                obj_index_2_name[index]: value for index, value in enumerate(start_point_values)}
+            start_point_column_name_2_value[ReportCreator._CONNECTED_POINT_INDICATOR_COLUMN_NAME] = 1
+            records.append(start_point_column_name_2_value)
+            end_point_values = edge.end_point().values()
+            end_point_column_name_2_value = {
+                obj_index_2_name[index]: value for index, value in enumerate(end_point_values)}
+            connected = 1 if index < len(sorted_edges) - 1 and all(np.isclose(
+                end_point_values, sorted_edges[index+1].start_point().values())) else 0
+            end_point_column_name_2_value[ReportCreator._CONNECTED_POINT_INDICATOR_COLUMN_NAME] = connected
+            if not connected:
+                records.append(end_point_column_name_2_value)
         self._nondominated_edges_df = pd.DataFrame.from_records(records) if records else \
             pd.DataFrame(columns=obj_index_2_name.values())
 
@@ -202,12 +245,44 @@ class ReportCreator:
         solution_state = self._state.solution_state()
         obj_index_2_name = self._momilp_model.objective_index_2_name()
         points = [nondominated_point.point() for nondominated_point in solution_state.nondominated_points()]
-        records = []
+        updated_points = []
         for point in points:
             values = self._restore_original_values(point.values())
-            records.append({obj_index_2_name[index]: value for index, value in enumerate(values)})
+            updated_point = Point(values)
+            updated_points.append(updated_point)
+        sorted_points = self._sort_nondominated_points(updated_points)
+        records = []
+        for point in sorted_points:
+            values = point.values()
+            column_name_2_value = {obj_index_2_name[index]: value for index, value in enumerate(values)}
+            column_name_2_value[ReportCreator._CONNECTED_POINT_INDICATOR_COLUMN_NAME] = 0
+            records.append(column_name_2_value)
         self._nondominated_points_df = pd.DataFrame.from_records(records) if records else \
             pd.DataFrame(columns=obj_index_2_name.values())
+
+    def _sort_nondominated_edges(self, edges):
+        """Sorts the nondominated edges in non-improving values of the criterion values starting from the lowest index 
+        criterion, returns the sorted edges"""
+
+        model_sense = self._momilp_model.model_sense()
+
+        def sort_function(edge):
+            """Nondominated edge sorting function"""
+            return tuple([model_sense * v for v in edge.start_point().values()])
+        
+        return sorted(edges, key=sort_function)
+
+    def _sort_nondominated_points(self, points):
+        """Sorts the nondominated points in non-improving values of the criterion values starting from the lowest index 
+        criterion, returns the sorted points"""
+
+        model_sense = self._momilp_model.model_sense()
+
+        def sort_function(point):
+            """Nondominated point sorting function"""
+            return tuple([model_sense * v for v in point.values()])
+        
+        return sorted(points, key=sort_function)
 
     def _to_csv(self, df, report_name):
         """Converts the data frame to CSV file and exports to the output directory"""
@@ -233,27 +308,6 @@ class ReportCreator:
     def nondominated_points_df(self):
         """Returns the nondominated points data frame"""
         return self._nondominated_points_df
-
-
-class PointComparisonUtilities:
-
-    """Implements point comparison utilities"""
-
-    @staticmethod
-    def compare_to(base_point, compared_point, value_index_2_priority):
-        """Compares the points in lexicographic order specified by value index to priority dictionary
-        
-        Returns 0, if both points have equal values, 1 if base point is lexicographically greater than the compared 
-        point, else -1"""
-        assert len(base_point.values()) == len(compared_point.values())
-        indicies_in_lexicographic_order = [
-            item[0] for item in sorted(value_index_2_priority.items(), key=operator.itemgetter(1), reverse=True)]
-        for index in indicies_in_lexicographic_order:
-            if base_point.values()[index] > compared_point.values()[index]:
-                return 1
-            if base_point.values()[index] < compared_point.values()[index]:
-                return -1
-        return 0
 
 
 class SearchUtilities:
