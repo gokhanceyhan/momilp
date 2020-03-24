@@ -88,7 +88,7 @@ class GurobiMomilpModel(AbstractModel):
 
     def __init__(
             self, model_file, discrete_objective_indices=None, log_to_console=False, log_to_file=True, num_obj=None, 
-            scale=False):
+            scale=True):
         self._constraint_name_2_constraint = {}
         self._discrete_objective_indices = discrete_objective_indices or []
         self._int_var_2_original_lb_and_ub = {}
@@ -156,7 +156,7 @@ class GurobiMomilpModel(AbstractModel):
         NOTE: If 'scale_objective_ranges' is True, 'Min-Max Scaling' is applied. Otherwise, objective functions are 
         shifted so that the minimum value vector is on the origin."""
         model = self._model
-        sense = model.getAttr("ModelSense")
+        sense = self._model_sense
         # Implement the procedure to transform the feasible objective space into R_{>=0} and scale the criterion 
         # vectors to interval [0, 1]
         max_priority = 0
@@ -193,14 +193,15 @@ class GurobiMomilpModel(AbstractModel):
             obj_var = self._objective_name_2_variable[obj_name]
             obj_constraint = self._constraint_name_2_constraint[obj_name]
             coeff = sense * scaling_coeff
+            const = -1 * sense * scaling_constant
             model.chgCoeff(obj_constraint, obj_var, coeff)
-            obj_constraint.RHS = scaling_constant
+            obj_constraint.RHS = const
             # update the bounds of the objective variables
             self._objective_name_2_variable[obj_name].LB = 0.0
             # restore the original priority of the objective
             model.setAttr("ObjNPriority", priority)
-        # restore the original objective sense
-        model.setAttr("ModelSense", sense)
+        # restore the objective sense to maximization all the time
+        model.setAttr("ModelSense", -1)
         model.update()
 
     def _set_params(
