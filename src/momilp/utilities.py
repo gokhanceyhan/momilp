@@ -197,11 +197,9 @@ class ReportCreator:
 
     def _restore_original_values(self, values):
         """Restores the original values of the criteria by using the objective inverse scalers"""
-        model_sense = self._momilp_model.model_sense()
         objective_index_2_name = self._momilp_model.objective_index_2_name()
-        sense_coefficient = - model_sense
         return [
-            sense_coefficient * self._momilp_model.objective_scaler(name, inverse=True)(values[index]) for index, name 
+            self._momilp_model.objective_scaler(name, inverse=True)(values[index]) for index, name 
             in objective_index_2_name.items()]
 
     def _set_nondominated_edges_df(self):

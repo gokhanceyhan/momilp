@@ -150,7 +150,7 @@ class GurobiMomilpModel(AbstractModel):
         self._int_var_2_original_lb_and_ub = {var: (var.LB, var.UB) for var in self._y}
         model.update()
 
-    def _scale_model(self, scale_objective_ranges=False):
+    def _scale_model(self, scale_objective_ranges=True):
         """Scales the model
         
         NOTE: If 'scale_objective_ranges' is True, 'Min-Max Scaling' is applied. Otherwise, objective functions are 
@@ -183,25 +183,27 @@ class GurobiMomilpModel(AbstractModel):
                 model, self._y, raise_error_if_infeasible=True, 
                 solver_stage=SolverStage.MODEL_SCALING).point_solution()
             self._objective_name_2_range[obj_name] = ObjectiveRange(max_point_sol, min_point_sol)
-            # scale
-            obj_max=max_point_sol.point().values()[obj_index]
-            obj_min=min_point_sol.point().values()[obj_index]
-            scaling_coeff = obj_max - obj_min if scale_objective_ranges else 1
+            # restore the original priority of the objective
+            model.setAttr("ObjNPriority", priority)
+        # scale
+        # restore the objective sense to maximization all the time
+        model.setAttr("ModelSense", -1)
+        for obj_index in range(self._num_obj):
+            model.setParam("ObjNumber", obj_index)
+            obj_name = model.getAttr("ObjNName")
+            obj_range = self._objective_name_2_range[obj_name]
+            obj_max=obj_range.max_point_solution().point().values()[obj_index]
+            obj_min=obj_range.min_point_solution().point().values()[obj_index]
+            scaling_coeff = (obj_max - obj_min) if scale_objective_ranges and obj_max > obj_min else 1
             self._objective_name_2_scaling_coeff[obj_name] = scaling_coeff
-            scaling_constant = obj_min
+            scaling_constant = -1 * sense * obj_min / scaling_coeff
             self._objective_name_2_scaling_constant[obj_name] = scaling_constant
             obj_var = self._objective_name_2_variable[obj_name]
             obj_constraint = self._constraint_name_2_constraint[obj_name]
-            coeff = sense * scaling_coeff
-            const = -1 * sense * scaling_constant
-            model.chgCoeff(obj_constraint, obj_var, coeff)
-            obj_constraint.RHS = const
+            model.chgCoeff(obj_constraint, obj_var, scaling_coeff)
+            obj_constraint.RHS = scaling_constant
             # update the bounds of the objective variables
             self._objective_name_2_variable[obj_name].LB = 0.0
-            # restore the original priority of the objective
-            model.setAttr("ObjNPriority", priority)
-        # restore the objective sense to maximization all the time
-        model.setAttr("ModelSense", -1)
         model.update()
 
     def _set_params(
@@ -353,7 +355,7 @@ class GurobiMomilpModel(AbstractModel):
         scaling_coeff = self._objective_name_2_scaling_coeff.get(objective_name, 1)
         scaling_constant = self._objective_name_2_scaling_constant.get(objective_name, 0)
         if inverse:
-            return lambda value: value * scaling_coeff + scaling_constant
+            return lambda value: -1 * scaling_coeff * value + scaling_constant
         return lambda value: (value - scaling_constant) / scaling_coeff if scaling_coeff > 0 else \
             (value - scaling_constant)
 
