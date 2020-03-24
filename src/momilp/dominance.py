@@ -84,6 +84,8 @@ class DominanceModel:
         self._objective_variables = z.values()
         model.setParam("LogToConsole", 0)
         model.setParam("LogFile", "")
+        model.Params.FeasibilityTol = 1e-9
+        model.Params.OptimalityTol = 1e-9
 
     def add_dominated_space_constraints(self, frontier):
         """Adds the constraints to the model that define the dominated space by the frontier"""
