@@ -292,7 +292,7 @@ class ReportCreator:
     def create(self):
         """Creates the reports"""
         self.create_data_frames()
-        nondominated_set_df = self._nondominated_points_df.append(self._nondominated_edges_df)
+        nondominated_set_df = self._nondominated_points_df.append(self._nondominated_edges_df, sort=False)
         report_name = ReportCreator._NONDOMINATED_SET_REPORT_NAME
         self._to_csv(nondominated_set_df, report_name)
 
