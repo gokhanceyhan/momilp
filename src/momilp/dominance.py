@@ -178,7 +178,7 @@ class DominanceRules:
 
     """Implements rules to identify the dominance relations between two sets of points, edges or frontiers"""
 
-    # MOMILP_TO_DO: Dominance rules for open or half-open edges
+    # MOMILP_TO_DO: MOMILP-10: Dominance rules for open or half-open edges
     class EdgeToEdge:
 
         """Implements the rules when comparing an edge to another edge"""

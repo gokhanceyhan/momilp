@@ -261,6 +261,16 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
                     previous_selected_point_solution.point().values()[self._primary_objective_index]:
                 state.solution_state().move_weakly_nondominated_to_nondominated()
             else:
+                # we can apply the following tests to detect the nondominated points or edges since we know that 
+                # the selected solution is the one having the highest value in the first criterion of the not-yet 
+                # dominated projected space
+                compared_criterion_index = self._projected_space_criterion_index_2_criterion_index[0]
+                compared_criterion_value = selected_point_solution.point().values()[compared_criterion_index]
+                state.solution_state().filter_weakly_nondominated_edges(
+                    criterion_index=compared_criterion_index, criterion_value=compared_criterion_value)
+                state.solution_state().filter_weakly_nondominated_points(
+                    criterion_index=compared_criterion_index, criterion_value=compared_criterion_value)
+                # the elements that are still in the weakly nondominated set will be tested for dominance
                 state.solution_state().filter_dominated_points_and_edges(
                     self._dominance_filter, frontier, self._projected_space_criterion_index_2_criterion_index)
         # determine the status of the current frontier
@@ -337,8 +347,6 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             tabu_y_bars = selected_search_problem.tabu_y_bars()
             tabu_y_bars.append(y_bar)
             for child_index, region in enumerate(child_search_regions):
-                # MOMILP_TO_DO: MOMILP-11: Investigate the feasibility / efficiency of using the same search problem 
-                # model across different regions
                 search_problem = SearchProblem(selected_search_problem.momilp_model())
                 search_problem.update_problem(region=region, tabu_y_bars=tabu_y_bars)
                 search_space.add_search_problem(search_problem, index=selected_search_problem_index + 1 + child_index)
