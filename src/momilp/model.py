@@ -186,17 +186,15 @@ class GurobiMomilpModel(AbstractModel):
             # restore the original priority of the objective
             model.setAttr("ObjNPriority", priority)
         # scale
-        # restore the objective sense to maximization all the time
-        model.setAttr("ModelSense", -1)
         for obj_index in range(self._num_obj):
             model.setParam("ObjNumber", obj_index)
             obj_name = model.getAttr("ObjNName")
             obj_range = self._objective_name_2_range[obj_name]
             obj_max=obj_range.max_point_solution().point().values()[obj_index]
             obj_min=obj_range.min_point_solution().point().values()[obj_index]
-            scaling_coeff = (obj_max - obj_min) if scale_objective_ranges and obj_max > obj_min else 1
+            scaling_coeff = sense * ((obj_max - obj_min) if scale_objective_ranges and obj_max > obj_min else 1)
             self._objective_name_2_scaling_coeff[obj_name] = scaling_coeff
-            scaling_constant = -1 * sense * obj_min / scaling_coeff
+            scaling_constant = -1 * sense * obj_min
             self._objective_name_2_scaling_constant[obj_name] = scaling_constant
             obj_var = self._objective_name_2_variable[obj_name]
             obj_constraint = self._constraint_name_2_constraint[obj_name]
@@ -204,6 +202,8 @@ class GurobiMomilpModel(AbstractModel):
             obj_constraint.RHS = scaling_constant
             # update the bounds of the objective variables
             self._objective_name_2_variable[obj_name].LB = 0.0
+        # restore the objective sense to maximization all the time
+        model.setAttr("ModelSense", -1)
         model.update()
 
     def _set_params(
