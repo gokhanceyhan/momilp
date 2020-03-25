@@ -2,13 +2,21 @@
 
 import argparse
 import json
+import logging
 from src.common.elements import SolverPackage
 from src.instance_generator.factory import InstanceCreator, InstanceType
+
+logging.getLogger().setLevel(logging.INFO)
 
 
 class InstanceGeneratorApp:
 
     """Implements the command line application for the momilp instance generation"""
+
+    _DATA_FILE_DIR_CONFIGURATION_NAME = "data_file_dir"
+    _INSTANCE_TYPE_CONFIGURATION_NAME = "instance_type"
+    _NUM_INSTANCES_CONFIGURATION_NAME = "num_instances"
+    _PARAMETERS_CONFIGURATION_NAME = "parameters"
 
     def _parse_args(self):
         """Parses and returns the arguments"""
@@ -27,7 +35,11 @@ class InstanceGeneratorApp:
         output_dir = args.working_dir
         with open(args.configuration, mode="r") as f:
             conf = json.load(f)
-        instance_type = conf["instance_type"]
-        params = conf["parameters"]
-        num_instances = conf["num_instances"]
-        InstanceCreator.create(instance_type, num_instances, output_dir, **params)
+        instance_type = conf.get(InstanceGeneratorApp._INSTANCE_TYPE_CONFIGURATION_NAME)
+        assert instance_type, "the '%s' value must be specified in the configuration file" \
+            % InstanceGeneratorApp._INSTANCE_TYPE_CONFIGURATION_NAME
+        params = conf.get(InstanceGeneratorApp._PARAMETERS_CONFIGURATION_NAME, {})
+        data_file_dir = conf.get(InstanceGeneratorApp._DATA_FILE_DIR_CONFIGURATION_NAME)
+        num_instances = conf.get(InstanceGeneratorApp._NUM_INSTANCES_CONFIGURATION_NAME)
+        InstanceCreator.create(
+            instance_type, output_dir, data_file_dir=data_file_dir, num_instances=num_instances, **params)
