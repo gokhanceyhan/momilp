@@ -98,7 +98,7 @@ class SolutionState:
         """Filters the dominated points and edges from the weakly dominated points and edges"""
         assert isinstance(frontier, FrontierInTwoDimension)
         dimensions = sorted(projected_space_criterion_index_2_criterion_index.values())
-        dominance_filter.set_dominated_space(frontier)
+        dominated_space_set_in_model = False
         for point_solution in self._weakly_nondominated_points:
             point = point_solution.point()
             point_in_two_dimension = TypeConversionUtilities.point_to_point_in_two_dimension(dimensions, point)
@@ -117,6 +117,9 @@ class SolutionState:
                 index: value for index, value in enumerate(edge.start_point().values()) if index not in dimensions}
             if DominanceRules.EdgeToFrontier.dominated(edge_in_two_dimension, frontier):
                 continue
+            if not dominated_space_set_in_model:
+                dominance_filter.set_dominated_space(frontier)
+                dominated_space_set_in_model = True
             filtered_edges_in_two_dimension = dominance_filter.filter_edge(edge_in_two_dimension)
             filtered_edges = [
                 TypeConversionUtilities.edge_in_two_dimension_to_edge(
@@ -125,6 +128,38 @@ class SolutionState:
             nondominated_edges = [EdgeSolution(edge, edge_solution.y_bar()) for edge in filtered_edges]
             self._weakly_nondominated_edges.extend(nondominated_edges)
 
+    def filter_weakly_nondominated_edges(self, criterion_index=0, criterion_value=0):
+        """Checks each edge in the weakly nondominated set, and moves them to the nondominated set if they 
+        have higher value in the specified criterion assuming that the condition proves the nondominance"""
+        nondominated_edge_solutions = []
+        for edge_solution in self._weakly_nondominated_edges:
+            edge = edge_solution.edge()
+            if edge.start_point().values()[criterion_index] <= criterion_value:
+                continue
+            nondominated_edge_solutions.append(edge_solution)
+        efficient_integer_vectors = [p.y_bar() for p in nondominated_edge_solutions]
+        self._weakly_nondominated_edges = [
+            e for e in self._weakly_nondominated_edges if e not in nondominated_edge_solutions]
+        self._nondominated_edges.extend(nondominated_edge_solutions)
+        tuples = [tuple(e) for e in efficient_integer_vectors]
+        self._efficient_integer_vectors.update(tuples)
+
+    def filter_weakly_nondominated_points(self, criterion_index=0, criterion_value=0):
+        """Checks each point in the weakly nondominated set, and moves them to the nondominated set if they 
+        have higher value in the specified criterion assuming that the condition proves the nondominance"""
+        nondominated_point_solutions = []
+        for point_solution in self._weakly_nondominated_points:
+            point = point_solution.point()
+            if point.values()[criterion_index] <= criterion_value:
+                continue
+            nondominated_point_solutions.append(point_solution)
+        efficient_integer_vectors = [p.y_bar() for p in nondominated_point_solutions]
+        self._weakly_nondominated_points = [
+            p for p in self._weakly_nondominated_points if p not in nondominated_point_solutions]
+        self._nondominated_points.extend(nondominated_point_solutions)
+        tuples = [tuple(e) for e in efficient_integer_vectors]
+        self._efficient_integer_vectors.update(tuples)
+        
     def move_weakly_nondominated_to_nondominated(self):
         """Moves all of the weakly nondominated points or edges to nondominated points or edges"""
         self._nondominated_edges.extend(self._weakly_nondominated_edges)
