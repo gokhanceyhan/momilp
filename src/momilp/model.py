@@ -150,7 +150,7 @@ class GurobiMomilpModel(AbstractModel):
         self._int_var_2_original_lb_and_ub = {var: (var.LB, var.UB) for var in self._y}
         model.update()
 
-    def _scale_model(self, scale_objective_ranges=True):
+    def _scale_model(self, scale_objective_ranges=False):
         """Scales the model
         
         NOTE: If 'scale_objective_ranges' is True, 'Min-Max Scaling' is applied. Otherwise, objective functions are 
