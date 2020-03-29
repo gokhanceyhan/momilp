@@ -485,4 +485,5 @@ class TypeConversionUtilities:
     def point_to_point_in_two_dimension(dimensions, point):
         """Converts the point to point in two dimensional space of the specified dimensions"""
         assert len(dimensions) == 2, "there must be two dimensions"
-        return PointInTwoDimension([value for index, value in enumerate(point.values()) if index in dimensions])
+        sorted_dimensions = sorted(dimensions)
+        return PointInTwoDimension([value for index, value in enumerate(point.values()) if index in sorted_dimensions])

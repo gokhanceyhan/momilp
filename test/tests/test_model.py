@@ -24,7 +24,7 @@ class GurobiMomilpModelTest(TestCase):
     def test_create_three_obj_binary_linear_programming_problem(self):
         """Tests the creation of a three-objective binary linear program"""
         file_name = os.path.join(self._test_data_dir, "three_obj_blp.lp")
-        model = GurobiMomilpModel(file_name, scale=False)
+        model = GurobiMomilpModel(file_name)
         self.assert_that(model.num_obj(), is_(3))
         self.assert_that(model.X(), has_key("Budget"))
         self.assert_that(model.X(), has_key("Set0"))

@@ -25,7 +25,7 @@ class ConeBasedSearchAlgorithmTest(TestCase):
         model_file = os.path.join(self._test_data_dir, "three_obj_blp.lp")
         algorithm = AlgorithmFactory.create(
             model_file, self._logs_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, 
-            discrete_objective_indices=[0, 1, 2])
+            discrete_objective_indices=[0, 1, 2], explore_decision_space=False)
         state = algorithm.run()
         report_creator = ReportCreator(algorithm.momilp_model(), state, self._instance_name, self._logs_dir)
         report_creator.create_data_frames()
@@ -54,7 +54,7 @@ class ConeBasedSearchAlgorithmTest(TestCase):
         print(nondominated_points_df)
         print(nondominated_edges_df)
         self.assert_that(nondominated_points_df.empty)
-        num_edges, _ = nondominated_edges_df.shape
+        num_edges = len(state.solution_state().nondominated_edges())
         self.assert_that(num_edges, is_(2))    
 
     def test_three_obj_blp_ex2_problem(self):
@@ -73,9 +73,9 @@ class ConeBasedSearchAlgorithmTest(TestCase):
         nondominated_edges_df = report_creator.nondominated_edges_df()
         print(nondominated_points_df)
         print(nondominated_edges_df)
-        num_points, _ = nondominated_points_df.shape
+        num_points = len(state.solution_state().nondominated_points())
         self.assert_that(num_points, is_(1))
-        num_edges, _ = nondominated_edges_df.shape
+        num_edges = len(state.solution_state().nondominated_edges())
         self.assert_that(num_edges, is_(1))
 
     def test_three_obj_blp_ex3_problem(self):
@@ -93,7 +93,7 @@ class ConeBasedSearchAlgorithmTest(TestCase):
         nondominated_edges_df = report_creator.nondominated_edges_df()
         print(nondominated_points_df)
         print(nondominated_edges_df)
-        num_points, _ = nondominated_points_df.shape
+        num_points = len(state.solution_state().nondominated_points())
         self.assert_that(num_points, is_(3))
         self.assert_that(nondominated_edges_df.empty)
 
@@ -113,8 +113,8 @@ class ConeBasedSearchAlgorithmTest(TestCase):
         nondominated_edges_df = report_creator.nondominated_edges_df()
         print(nondominated_points_df)
         print(nondominated_edges_df)
-        num_points, _ = nondominated_points_df.shape
-        num_edges, _ = nondominated_edges_df.shape
+        num_points = len(state.solution_state().nondominated_points())
+        num_edges = len(state.solution_state().nondominated_edges())
         # MOMILP_TO_DO: MOMILP-8: Generation of weakly nondominated but dominated points or edges
         self.assert_that(num_edges, is_(5))
         self.assert_that(num_points, is_(2))
