@@ -104,8 +104,8 @@ class SolutionState:
             point_in_two_dimension = TypeConversionUtilities.point_to_point_in_two_dimension(dimensions, point)
             if DominanceRules.PointToFrontier.dominated(point_in_two_dimension, frontier):
                 self._weakly_nondominated_points.remove(point_solution)
+        filtered_weakly_nondominated_edges = []
         for edge_solution in self._weakly_nondominated_edges:
-            self._weakly_nondominated_edges.remove(edge_solution)
             edge = edge_solution.edge()
             num_dim = len(edge.start_point().values())
             assert all(
@@ -126,7 +126,8 @@ class SolutionState:
                     unprojected_dim_2_value, e, projected_space_criterion_index_2_criterion_index)  for e in 
                 filtered_edges_in_two_dimension]
             nondominated_edges = [EdgeSolution(edge, edge_solution.y_bar()) for edge in filtered_edges]
-            self._weakly_nondominated_edges.extend(nondominated_edges)
+            filtered_weakly_nondominated_edges.extend(nondominated_edges)
+        self._weakly_nondominated_edges = filtered_weakly_nondominated_edges
 
     def filter_weakly_nondominated_edges(self, criterion_index=0, criterion_value=0):
         """Checks each edge in the weakly nondominated set, and moves them to the nondominated set if they 

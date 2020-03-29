@@ -87,8 +87,7 @@ class GurobiMomilpModel(AbstractModel):
     _MODEL_NAME = "P"
 
     def __init__(
-            self, model_file, discrete_objective_indices=None, log_to_console=False, log_to_file=True, num_obj=None, 
-            scale=True):
+            self, model_file, discrete_objective_indices=None, log_to_console=False, log_to_file=True, num_obj=None):
         self._constraint_name_2_constraint = {}
         self._discrete_objective_indices = discrete_objective_indices or []
         self._int_var_2_original_lb_and_ub = {}
@@ -114,8 +113,7 @@ class GurobiMomilpModel(AbstractModel):
         self._validate()
         self._initialize()
         self._set_params(log_to_console=log_to_console, log_to_file=log_to_file)
-        if scale:
-            self._scale_model()
+        self._scale_model()
 
     def _initialize(self):
         """Creates the constraints in the problem"""
