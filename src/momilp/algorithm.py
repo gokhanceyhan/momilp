@@ -85,7 +85,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
 
     """Implements the cone-based search algorithm"""
 
-    _LOWER_BOUND_DELTA = 1e-6
+    _LOWER_BOUND_DELTA = 1e-4
     _STARTING_ITERATION_INDEX = 0
 
     def __init__(self, model_file, working_dir, discrete_objective_indices=None, explore_decision_space=False):
@@ -211,6 +211,17 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
     def _solve_slice_problem(self, selected_point_solution, region, iteration_index):
         """Solves the slice problem and returns the result"""
         start = time()
+        if self._momilp_model.discrete_nondominated_set():
+            projected_space_criterion_indices = self._projected_space_criterion_index_2_criterion_index.values()
+            point_in_two_dimension = TypeConversionUtilities.point_to_point_in_two_dimension(
+                projected_space_criterion_indices, selected_point_solution.point())
+            frontier = FrontierInTwoDimension(point=point_in_two_dimension)
+            frontier_solution = FrontierSolution(frontier, selected_point_solution.y_bar())
+            ideal_point = selected_point_solution.point()
+            result = SliceProblemResult(frontier_solution, ideal_point)
+            end = time()
+            self._elapsed_time_in_seconds_for_slice_problem = end - start
+            return result
         slice_problem = self._state.slice_problem()
         slice_problem.update_problem(
             selected_point_solution.y_bar(), 

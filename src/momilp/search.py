@@ -119,7 +119,8 @@ class SearchProblem(Problem):
     def solve(self):
         # the model has to be reset since the same model is copied over many search regions
         self._reset_model()
-        self._add_region_defining_constraints_in_two_dimension(self._region)
+        if self._region:
+            self._add_region_defining_constraints_in_two_dimension(self._region)
         self._add_tabu_constraint(self._tabu_y_bars)
         momilp_model = self._momilp_model
         momilp_model.solve()
@@ -151,7 +152,6 @@ class SearchSpace:
         assert dimension == 3, "only three dimensional search spaces are supported currently"
         self._dimension = dimension
         self._primary_criterion_index = primary_criterion_index
-        self._projected_space_criterion_index_2_criterion_index = projected_space_criterion_index_2_criterion_index
         # NOTE: Search problem are always sorted based on the value of projected space criterion at index 0
         self._search_problems = []
 
@@ -265,7 +265,8 @@ class SliceProblem(Problem):
         self._reset_model()
         self._validate_integer_vector(self._y_bar)
         self._momilp_model.fix_integer_vector(self._y_bar)
-        self._add_region_defining_constraints_in_two_dimension(self._region)
+        if self._region:
+            self._add_region_defining_constraints_in_two_dimension(self._region)
         model = self._momilp_model.problem()
         solver = BolpDichotomicSearchWithGurobiSolver(model)
         solver.solve()

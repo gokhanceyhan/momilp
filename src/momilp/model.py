@@ -107,6 +107,7 @@ class GurobiMomilpModel(AbstractModel):
         self._objective_name_2_scaling_constant = {}
         self._objective_name_2_variable = {}
         self._primary_objective_index = None
+        self._pure_integer_problem = None
         self._region_defining_constraint_names = []
         self._tabu_constraint_names = []
         self._y = []
@@ -144,6 +145,7 @@ class GurobiMomilpModel(AbstractModel):
         # store the integer variable vector
         vars_ = self._model.getVars()
         self._y = [var for var in vars_ if var.getAttr("VType") == "B" or var.getAttr("VType") == "I"]
+        self._pure_integer_problem = len(vars_) == len(self._y)
         # save the original bounds of the integer variables
         self._int_var_2_original_lb_and_ub = {var: (var.LB, var.UB) for var in self._y}
         model.update()
@@ -284,7 +286,7 @@ class GurobiMomilpModel(AbstractModel):
         return constraint
 
     def binary(self):
-        """Returns True if this is a binary-integer model, False otherwise."""
+        """Returns True if this is a binary-mixed-integer model, False otherwise."""
         y = self._y
         for y_ in y:
             if y_.LB < 0 or y_.UB > 1:
@@ -307,6 +309,10 @@ class GurobiMomilpModel(AbstractModel):
         model_copy = copy(self)
         model_copy._model = self._model.copy()
         return model_copy
+
+    def discrete_nondominated_set(self):
+        """Returns True if the problem has a discrete nondominated set, otherwise False"""
+        return len(self._discrete_objective_indices) > self._num_obj - 2 or self._pure_integer_problem
 
     def fix_integer_vector(self, y_bar):
         y = self._y
@@ -360,6 +366,10 @@ class GurobiMomilpModel(AbstractModel):
     def primary_objective_index(self):
         """Returns the primary objective index"""
         return self._primary_objective_index
+
+    def pure_integer_problem(self):
+        """Returns True if the model does not include any continuous variables, otherwise False"""
+        return self._pure_integer_problem
 
     def problem(self):
         return self._model
