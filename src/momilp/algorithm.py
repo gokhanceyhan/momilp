@@ -107,6 +107,22 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         self._working_dir = working_dir
         self._initialize()
 
+    def _add_iteration(self, iteration_index, iteration_time_in_seconds, selected_point_solution):
+        """Creates and add the completed iteration to the list of iterations in the state"""
+        state = self._state
+        num_milp_solved = self._num_milp_solved
+        elapsed_time_in_seconds_for_search_problem = self._elapsed_time_in_seconds_for_search_problem
+        elapsed_time_in_seconds_for_slice_problem = self._elapsed_time_in_seconds_for_slice_problem
+        statistics = IterationStatistics(
+            iteration_time_in_seconds, elapsed_time_in_seconds_for_search_problem, 
+            elapsed_time_in_seconds_for_slice_problem, num_milp_solved)
+        iteration = Iteration(iteration_index, selected_point_solution, statistics)
+        state.iterations().append(iteration)
+        # reset the statistics of the algorithm instance
+        self._num_milp_solved = 0
+        self._elapsed_time_in_seconds_for_search_problem = 0
+        self._elapsed_time_in_seconds_for_slice_problem = 0
+
     def _convert_edge_in_projected_space_to_edge_in_original_space(self, edge):
         """Returns an edge in the original search space from the edge in the projected search space"""
         additional_dim_2_value = {self._primary_objective_index: edge.z3()}
@@ -122,6 +138,14 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         """Returns a convex cone corresponding to the positive quadrant"""
         return ConvexConeInPositiveQuadrant(
             [RayInTwoDimension(90, PointInTwoDimension([0, 0])), RayInTwoDimension(0, PointInTwoDimension([0, 0]))])
+
+    @staticmethod
+    def _filter_search_problems(problems, y_bar=None):
+        """Filter the search problems based on the filtering conditions"""
+        filtered_problems = [p for p in problems]
+        if y_bar is not None:
+            filtered_problems = [p for p in filtered_problems if p.result().point_solution().y_bar() == y_bar]
+        return filtered_problems
 
     def _initialize(self):
         """Initializes the algorithm"""
@@ -208,7 +232,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         search_problems[:] = [p for p in search_problems if ConeBasedSearchAlgorithm._is_problem_feasible(p)]
         return search_problems
 
-    def _solve_slice_problem(self, selected_point_solution, region, iteration_index):
+    def _solve_slice_problem(self, iteration_index, region, selected_point_solution):
         """Solves the slice problem and returns the result"""
         start = time()
         if self._momilp_model.discrete_nondominated_set():
@@ -294,22 +318,6 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
                 solution_edge = self._convert_edge_in_projected_space_to_edge_in_original_space(edge)
                 state.solution_state().add_weakly_nondominated_edge(
                     EdgeSolution(solution_edge, selected_point_solution.y_bar()))
-        
-    def _add_iteration(self, iteration_index, iteration_time_in_seconds, selected_point_solution):
-        """Creates and add the completed iteration to the list of iterations in the state"""
-        state = self._state
-        num_milp_solved = self._num_milp_solved
-        elapsed_time_in_seconds_for_search_problem = self._elapsed_time_in_seconds_for_search_problem
-        elapsed_time_in_seconds_for_slice_problem = self._elapsed_time_in_seconds_for_slice_problem
-        statistics = IterationStatistics(
-            iteration_time_in_seconds, elapsed_time_in_seconds_for_search_problem, 
-            elapsed_time_in_seconds_for_slice_problem, num_milp_solved)
-        iteration = Iteration(iteration_index, selected_point_solution, statistics)
-        state.iterations().append(iteration)
-        # reset the statistics of the algorithm instance
-        self._num_milp_solved = 0
-        self._elapsed_time_in_seconds_for_search_problem = 0
-        self._elapsed_time_in_seconds_for_slice_problem = 0
 
     def dominance_filter(self):
         """Returns the dominance filter"""
@@ -335,15 +343,17 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             if not search_problems:
                 state.solution_state().move_weakly_nondominated_to_nondominated()
                 break
-            # select the next efficient integer vector and solve the slice problem
+            # select the next efficient integer vector
             selected_search_problem_and_index = self._select_search_problem_and_index(search_problems)
             selected_search_problem = selected_search_problem_and_index[0]
             selected_search_problem_index = selected_search_problem_and_index[1]
+            selected_region = selected_search_problem.region()
             selected_point_solution = selected_search_problem.result().point_solution()
-            slice_problem_result = self._solve_slice_problem(
-                selected_point_solution, selected_search_problem.region(), iteration_index)
-            frontier = slice_problem_result.frontier_solution().frontier()
             y_bar = selected_point_solution.y_bar()
+            # solve the slice problem
+            slice_problem_result = self._solve_slice_problem(
+                iteration_index, selected_region, selected_point_solution)
+            frontier = slice_problem_result.frontier_solution().frontier()            
             # update the search space
             self._update_lower_bounds(
                 slice_problem_result.ideal_point(), search_problems, selected_search_problem_index, 
@@ -351,7 +361,6 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             # update the state
             self._update_state(selected_point_solution, frontier, iteration_index)
             # partition the selected search region
-            selected_region = selected_search_problem.region()
             child_search_regions = SearchUtilities.partition_search_region_in_two_dimension(
                 frontier, selected_region, lower_bound_delta=lower_bound_delta)
             # add the integer vector to the list of tabu integer vectors
