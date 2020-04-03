@@ -24,7 +24,7 @@ class ConstraintGenerationUtilities:
     @staticmethod
     def create_constraints_for_cone_in_positive_quadrant(momilp_model, cone, x_var, y_var, name=None):
         """Creates and adds the constraints to the model for the given cone, returns the constraints"""
-        assert isinstance(cone, ConvexConeInPositiveQuadrant)
+        assert isinstance(cone, ConvexConeInPositiveQuadrant), "incorrect cone type"
         constraints = []
         name = name or str(id(cone))
         left_extreme_ray = cone.left_extreme_ray()
@@ -48,7 +48,7 @@ class ConstraintGenerationUtilities:
     def create_constraint_for_edge_in_two_dimension(
             momilp_model, edge, x_var, y_var, name=None, sense=GRB.GREATER_EQUAL):
         """Creates and adds the constraint to the model for the given edge, returns the constraint"""
-        assert isinstance(edge, EdgeInTwoDimension)
+        assert isinstance(edge, EdgeInTwoDimension), "incorrect edge type"
         name = name or str(id(edge))
         name_ = "_".join([ConstraintGenerationUtilities._EDGE_CONSTRAINT_NAME_PREFIX, name])
         left_point = edge.left_point()
@@ -65,7 +65,7 @@ class ConstraintGenerationUtilities:
     @staticmethod
     def create_constraints_for_lower_bound_in_two_dimension(momilp_model, lower_bound, x_var, y_var, name=None):
         """Creates and adds the constraints to the model for the given lower bound, returns the constraints"""
-        assert isinstance(lower_bound, LowerBoundInTwoDimension)
+        assert isinstance(lower_bound, LowerBoundInTwoDimension), "incorrect lower bound type"
         name = name or str(id(lower_bound))
         name_ = "_".join([ConstraintGenerationUtilities._LOWER_BOUND_CONSTRAINT_NAME_PREFIX, name, "z1"])
         constraints = []
@@ -135,7 +135,8 @@ class ModelQueryUtilities:
     }
 
     @staticmethod
-    def query_optimal_solution(model, y, raise_error_if_infeasible=False, solver_stage=None):
+    def query_optimal_solution(
+            model, y, raise_error_if_infeasible=False, round_integer_vector_values=True, solver_stage=None):
         """Queries the model for a feasible solution, and returns the best feasible solution if there exists any"""
         status = ModelQueryUtilities.GUROBI_STATUS_2_OPTIMIZATION_STATUS.get(
             model.getAttr("Status"), OptimizationStatus.UNDEFINED)
@@ -154,7 +155,7 @@ class ModelQueryUtilities:
         for obj_index in range(model.getAttr("NumObj")):
             obj = model.getObjective(index=obj_index)
             values.append(obj.getValue())
-        y_bar = [round(var.x) for var in y]
+        y_bar = [round(var.x) if round_integer_vector_values else var.x for var in y]
         return SearchProblemResult(PointSolution(Point(values), y_bar), status)
 
 

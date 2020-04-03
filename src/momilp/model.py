@@ -417,6 +417,13 @@ class GurobiMomilpModel(AbstractModel):
         """Returns the tabu constraints"""
         return [self._constraint_name_2_constraint[constraint_name] for constraint_name in self._tabu_constraint_names]
 
+    def unrelax(self):
+        """Restores the integrality constraints of the variables"""
+        variable_type = "B" if self.binary() else "I"
+        for y_ in self._y:
+            y_.setAttr("VType", variable_type)
+        self._model.update()
+
     def update_constraint(self, name):
         pass
 

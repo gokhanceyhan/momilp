@@ -7,8 +7,8 @@ from gurobipy import Var
 import operator
 
 from src.common.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension, RayInTwoDimension, \
-    FrontierEdgeInTwoDimension, FrontierInTwoDimension, FrontierSolution, Point, PointInTwoDimension, \
-    SearchRegionInTwoDimension, SliceProblemResult
+    FrontierEdgeInTwoDimension, FrontierInTwoDimension, FrontierSolution, OptimizationStatus, Point, \
+    PointInTwoDimension, SearchRegionInTwoDimension, SearchProblemResult, SliceProblemResult
 from src.molp.dichotomic_search.solver import BolpDichotomicSearchWithGurobiSolver
 from src.momilp.utilities import ConstraintGenerationUtilities, ModelQueryUtilities, PointComparisonUtilities
 
@@ -103,6 +103,21 @@ class SearchProblem(Problem):
         super(SearchProblem, self).__init__(momilp_model)
         self._tabu_y_bars = []
         self._region = None
+        self._relaxed_problem_result = None
+        self._result = None
+        self._solved_milp = False
+
+    def _solve_relaxed_problem(self):
+        """Solves the LP relaxation of the problem"""
+        momilp_model = self._momilp_model
+        momilp_model.relax()
+        momilp_model.solve()
+        self._relaxed_problem_result = ModelQueryUtilities.query_optimal_solution(
+            momilp_model.problem(), momilp_model.y(), round_integer_vector_values=False)
+        momilp_model.unrelax()
+
+    def clear_result(self):
+        """Clears the result"""
         self._result = None
 
     def num_tabu_constraints(self):
@@ -113,23 +128,44 @@ class SearchProblem(Problem):
         """Returns the last added search region"""
         return self._region
 
+    def relaxed_problem_result(self):
+        return self._relaxed_problem_result
+
     def result(self):
         return self._result
 
-    def solve(self):
+    def solve(self, solve_relaxed_problem=True):
         # the model has to be reset since the same model is copied over many search regions
         self._reset_model()
         if self._region:
             self._add_region_defining_constraints_in_two_dimension(self._region)
         self._add_tabu_constraint(self._tabu_y_bars)
         momilp_model = self._momilp_model
+        if solve_relaxed_problem:
+            self._solved_milp = False
+            self._solve_relaxed_problem()
+        if self._relaxed_problem_result.status() == OptimizationStatus.INFEASIBLE:
+            point_solution = None
+            self._result = SearchProblemResult(point_solution, OptimizationStatus.INFEASIBLE)
+            return self._result
         momilp_model.solve()
+        self._solved_milp = True
         self._result = ModelQueryUtilities.query_optimal_solution(momilp_model.problem(), momilp_model.y())
         return self._result
+
+    def solved_milp(self):
+        """Returns True if an MILP model had to be solved, otherwise False"""
+        return self._solved_milp
 
     def tabu_y_bars(self):
         """Returns the tabu y_bars"""
         return self._tabu_y_bars
+
+    def update_lower_bound(self, lower_bound, clear_result=False):
+        """Updates the lower bound of the region"""
+        self._region.set_lower_bound(lower_bound)
+        if clear_result:
+            self._region = None
 
     def update_problem(self, keep_previous_tabu_constraints=False, region=None, tabu_y_bars=None):
         if not keep_previous_tabu_constraints:
