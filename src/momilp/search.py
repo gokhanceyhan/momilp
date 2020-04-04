@@ -161,12 +161,6 @@ class SearchProblem(Problem):
         """Returns the tabu y_bars"""
         return self._tabu_y_bars
 
-    def update_lower_bound(self, lower_bound, clear_result=False):
-        """Updates the lower bound of the region"""
-        self._region.set_lower_bound(lower_bound)
-        if clear_result:
-            self._region = None
-
     def update_problem(self, keep_previous_tabu_constraints=False, region=None, tabu_y_bars=None):
         if not keep_previous_tabu_constraints:
             self._tabu_y_bars = []
@@ -175,6 +169,13 @@ class SearchProblem(Problem):
         if region:
             SearchProblem._validate_search_region(region)
             self._region = region
+
+    def update_region(self, region, clear_result=False):
+        """Updates the region"""
+        SearchProblem._validate_search_region(region)
+        self._region = region
+        if clear_result:
+            self._result = None
 
 
 class SearchSpace:

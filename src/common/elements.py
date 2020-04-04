@@ -500,12 +500,6 @@ class SearchRegionInTwoDimension(SearchRegion):
         """Returns the lower bound"""
         return self._lower_bound
 
-    def set_lower_bound(self, lower_bound):
-        """Sets the lower bound of the region to the given bound"""
-        if not isinstance(lower_bound, LowerBoundInTwoDimension):
-            raise ValueError("the lower bound must be in two-dimensional space")
-        self._lower_bound = lower_bound
-
     def x_obj_name(self):
         """Returns the obj name for the x-axis of the region"""
         return self._x_obj_name

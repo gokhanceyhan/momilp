@@ -313,8 +313,11 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
                 (v + delta if i == update_criterion_index else v) for i, v in enumerate(reference_point.values())]
             shifted_reference_point = Point(shifted_values)
             lb[update_bound_index] = shifted_reference_point.values()[update_criterion_index]
+            region = SearchUtilities.create_search_region_in_two_dimension(
+                region.x_obj_name(), region.y_obj_name(), region.cone(), edge=region.edge(), 
+                lower_bound=LowerBoundInTwoDimension(lb), id_=region.id())
             point_solution = search_problem.result().point_solution()
-            search_problem.update_problem(region=region, keep_previous_tabu_constraints=True)
+            search_problem.update_region(region)
             if DominanceRules.PointToPoint.dominated(point_solution.point(), shifted_reference_point):
                 search_problem.clear_result()
 
@@ -331,7 +334,10 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         if not needs_update:
             return
         lb[bound_index] = max(lb[bound_index], shifted_bound_value)
-        search_problem.update_lower_bound(LowerBoundInTwoDimension(lb))
+        region = SearchUtilities.create_search_region_in_two_dimension(
+            region.x_obj_name(), region.y_obj_name(), region.cone(), edge=region.edge(), 
+            lower_bound=LowerBoundInTwoDimension(lb), id_=region.id())
+        search_problem.update_region(region)
         if not search_problem.result():
             return
         point = search_problem.result().point_solution().point()
