@@ -323,6 +323,21 @@ class SearchUtilities:
         return RayInTwoDimension(math.degrees(math.atan(tan)), from_point)
 
     @staticmethod
+    def create_search_region_in_two_dimension(x_obj_name, y_obj_name, cone, edge=None, lower_bound=None, id_=None):
+        """Cretaes a search region in two dimension with a minimum number of constraints"""
+        if not edge and not lower_bound:
+            return SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, id_=id_)
+        if not edge:
+            return SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, lower_bound=lower_bound, id_=id_)
+        bounds = lower_bound.bounds()
+        include_edge = True
+        if bounds[0] >= edge.right_point().values()[0] or bounds[1] >= edge.left_point().values()[1] or \
+            np.dot(edge.normal_vector(), bounds) >= edge.edge_value():
+            include_edge = False
+        edge_ = edge if include_edge else None
+        return SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=edge_, lower_bound=lower_bound, id_=id_)
+
+    @staticmethod
     def find_intersection_of_ray_and_edge_in_two_dimension(edge, ray):
         """Finds and returns the intersection of a ray and an edge
         
@@ -368,16 +383,18 @@ class SearchUtilities:
                 cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
                 bounds = [point.z1() + lower_bound_delta, initial_lb[1]]
                 lb = LowerBoundInTwoDimension(bounds)
-                regions.append(
-                    SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb))
+                region_ = SearchUtilities.create_search_region_in_two_dimension(
+                    x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb)
+                regions.append(region_)
             elif point_on_ray_in_two_dimension(point, region.cone().right_extreme_ray()):
                 left_extreme_ray = region.cone().left_extreme_ray()
                 right_extreme_ray = region.cone().right_extreme_ray()
                 cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
                 bounds = [initial_lb[0], point.z2() + lower_bound_delta]
                 lb = LowerBoundInTwoDimension(bounds)
-                regions.append(
-                    SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb))
+                region_ = SearchUtilities.create_search_region_in_two_dimension(
+                    x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb)
+                regions.append(region_)
             else:
                 middle_ray = SearchUtilities.create_ray_in_two_dimension(origin, point)
                 left_edge = None
@@ -393,16 +410,18 @@ class SearchUtilities:
                 cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
                 bounds = [initial_lb[0], point.z2() + lower_bound_delta]
                 lb = LowerBoundInTwoDimension(bounds)
-                regions.append(
-                    SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=left_edge, lower_bound=lb))
+                region_ = SearchUtilities.create_search_region_in_two_dimension(
+                    x_obj_name, y_obj_name, cone, edge=left_edge, lower_bound=lb)
+                regions.append(region_)
                 # right cone
                 right_extreme_ray = region.cone().right_extreme_ray()
                 left_extreme_ray = middle_ray
                 cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
                 bounds = [point.z1() + lower_bound_delta, initial_lb[1]]
                 lb = LowerBoundInTwoDimension(bounds)
-                regions.append(
-                    SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=right_edge, lower_bound=lb))
+                region_ = SearchUtilities.create_search_region_in_two_dimension(
+                    x_obj_name, y_obj_name, cone, edge=right_edge, lower_bound=lb)
+                regions.append(region_)
             return regions
         # add a region for the left-most region if the left-most point is not on the left extreme ray of the region
         left_most_point = frontier.edges()[0].left_point()
@@ -413,7 +432,7 @@ class SearchUtilities:
                 edge_intersection_point = SearchUtilities.find_intersection_of_ray_and_edge_in_two_dimension(
                     region.edge(), right_extreme_ray)
                 edge = EdgeInTwoDimension(region.edge().left_point(), edge_intersection_point)
-            left_most_region = SearchRegionInTwoDimension(
+            left_most_region = SearchUtilities.create_search_region_in_two_dimension(
                 x_obj_name, y_obj_name, 
                 ConvexConeInPositiveQuadrant([region.cone().left_extreme_ray(), right_extreme_ray]), 
                 edge=edge,
@@ -424,10 +443,10 @@ class SearchUtilities:
             left_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, edge.left_point())
             right_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, edge.right_point())
             cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
-            regions.append(
-                SearchRegionInTwoDimension(
-                    x_obj_name, y_obj_name, cone, edge=edge, 
-                    lower_bound=LowerBoundInTwoDimension([initial_lb[0], initial_lb[1]])))
+            region_ = SearchUtilities.create_search_region_in_two_dimension(
+                x_obj_name, y_obj_name, cone, edge=edge, 
+                lower_bound=LowerBoundInTwoDimension([initial_lb[0], initial_lb[1]]))
+            regions.append(region_)
         # add a region for the right-most region
         right_most_point = frontier.edges()[-1].right_point()
         if not point_on_ray_in_two_dimension(right_most_point, region.cone().right_extreme_ray()):
@@ -437,7 +456,7 @@ class SearchUtilities:
                 edge_intersection_point = SearchUtilities.find_intersection_of_ray_and_edge_in_two_dimension(
                     region.edge(), left_extreme_ray)
                 edge = EdgeInTwoDimension(edge_intersection_point, region.edge().right_point())
-            right_most_region = SearchRegionInTwoDimension(
+            right_most_region = SearchUtilities.create_search_region_in_two_dimension(
                 x_obj_name, y_obj_name, 
                 ConvexConeInPositiveQuadrant([left_extreme_ray, region.cone().right_extreme_ray()]), 
                 edge=edge, 
