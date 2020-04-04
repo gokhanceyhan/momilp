@@ -224,7 +224,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         self._elapsed_time_in_seconds_for_search_problem += end - start
         return result
 
-    def _solve_search_problems(self, iteration_index, search_problems):
+    def _solve_search_problems(self, iteration_index, search_problems, last_child_search_problem_index=None):
         """Solves and returns the search problems"""
         # search problems are sorted based on the regions from north-west to south-east in the x-y plane
         # x-axis: the criterion at index 0 of the projected space criteria
@@ -233,7 +233,12 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         # idea: if a point in the left-hand-side region has a point, z^l, with z^l_x value larger than the z_^r_x value 
         # of the point in the right-hand-side region, z^r, then z^l dominated z^r.
         feasible_search_problems = []
-        for index, search_problem in enumerate(search_problems):
+        # note: In the bi-objective case, we already know that the regions on the right-hand-side of the last child 
+        # search problem cannot have a nondominated point as we generete points in non-increasing values in the x-axis 
+        # objective
+        search_problems_to_be_checked = search_problems[:last_child_search_problem_index] if \
+            self._momilp_model.biobjective() and last_child_search_problem_index else search_problems
+        for index, search_problem in enumerate(search_problems_to_be_checked):
             if search_problem.result():
                 feasible_search_problems.append(search_problem)
                 continue
@@ -384,10 +389,13 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         search_problems = search_space.search_problems()
         lower_bound_delta = ConeBasedSearchAlgorithm._LOWER_BOUND_DELTA if not self._explore_decision_space else 0.0
         iteration_index = ConeBasedSearchAlgorithm._STARTING_ITERATION_INDEX
+        first_child_search_problem_index = None
+        last_child_search_problem_index = None
         while search_problems:
             iteration_start_time = time()
             # search all of the regions and remove the infeasible ones
-            search_problems = self._solve_search_problems(iteration_index, search_problems)
+            search_problems = self._solve_search_problems(
+                iteration_index, search_problems, last_child_search_problem_index=last_child_search_problem_index)
             if not search_problems:
                 state.solution_state().move_weakly_nondominated_to_nondominated()
                 break
@@ -419,6 +427,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
                 search_problem.update_problem(region=region, tabu_y_bars=tabu_y_bars)
                 search_space.add_search_problem(search_problem, index=selected_search_problem_index + 1 + child_index)
             search_space.delete_search_problem(selected_search_problem_index)
+            first_child_search_problem_index = selected_search_problem_index
+            last_child_search_problem_index = first_child_search_problem_index + len(child_search_regions) - 1
             # log the progress
             logging.info("Iteration '%d' with '%s'" % (iteration_index, selected_point_solution.point()))
             # log the details in the debug mode

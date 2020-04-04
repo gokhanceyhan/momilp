@@ -3,6 +3,7 @@
 import abc
 from copy import copy, deepcopy
 from gurobipy import GRB, LinExpr, Model, QuadExpr, read
+import math
 from operator import itemgetter
 from src.common.elements import SolverStage
 from src.momilp.utilities import ModelQueryUtilities
@@ -292,6 +293,17 @@ class GurobiMomilpModel(AbstractModel):
             if y_.LB < 0 or y_.UB > 1:
                 return False
         return True
+
+    def biobjective(self):
+        """Returns True if this is a bi-objective problem, False otherwise"""
+        if self._num_obj == 2:
+            return True
+        primary_objective_name = self._objective_index_2_name[self._primary_objective_index]
+        max_point_solution = self._objective_name_2_range[primary_objective_name].max_point_solution()
+        min_point_solution = self._objective_name_2_range[primary_objective_name].min_point_solution()
+        range = max_point_solution.point().values()[self._primary_objective_index] - \
+            min_point_solution.point().values()[self._primary_objective_index]
+        return self._num_obj == 3 and math.isclose(range, 0.0)
 
     def change_objective_priorities(self, obj_num_2_priority):
         """Changes the priorities of the objectives based on the given objective number to priority dictionary"""
