@@ -303,7 +303,7 @@ class GurobiMomilpModel(AbstractModel):
         min_point_solution = self._objective_name_2_range[primary_objective_name].min_point_solution()
         range = max_point_solution.point().values()[self._primary_objective_index] - \
             min_point_solution.point().values()[self._primary_objective_index]
-        return self._num_obj == 3 and math.isclose(range, 0.0)
+        return self._num_obj == 3 and math.isclose(range, 0.0, rel_tol=1e-6)
 
     def change_objective_priorities(self, obj_num_2_priority):
         """Changes the priorities of the objectives based on the given objective number to priority dictionary"""

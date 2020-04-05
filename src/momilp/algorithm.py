@@ -232,15 +232,28 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         
         # idea: if a point in the left-hand-side region has a point, z^l, with z^l_x value larger than the z_^r_x value 
         # of the point in the right-hand-side region, z^r, then z^l dominated z^r.
+        
         feasible_search_problems = []
         # note: In the bi-objective case, we already know that the regions on the right-hand-side of the last child 
         # search problem cannot have a nondominated point as we generete points in non-increasing values in the x-axis 
         # objective
-        search_problems_to_be_checked = search_problems[:last_child_search_problem_index] if \
-            self._momilp_model.biobjective() and last_child_search_problem_index else search_problems
-        for index, search_problem in enumerate(search_problems_to_be_checked):
+        search_problems[:] = search_problems[:last_child_search_problem_index] if self._momilp_model.biobjective() \
+            and last_child_search_problem_index else search_problems
+
+        # run region coupling
+        search_problems[:] = SearchSpace.couple_search_problems(search_problems)
+        
+        # solve the search problems
+        for index, search_problem in enumerate(search_problems):
             if search_problem.result():
                 feasible_search_problems.append(search_problem)
+                # update the lower bound of the next search problems to be solved
+                bound_index = 0
+                bound_criterion_index = self._projected_space_criterion_index_2_criterion_index[bound_index]
+                bound_value = search_problem.result().point_solution().point().values()[bound_criterion_index]
+                indices_to_update = [i for i in range(len(search_problems)) if i > index]
+                for index_to_update in indices_to_update:
+                    self._update_search_problem_region_lower_bound(bound_index, bound_value, index_to_update)
                 continue
             try:
                 self._solve_search_problem(search_problem)
@@ -253,15 +266,13 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
                 if not ConeBasedSearchAlgorithm._is_problem_feasible(search_problem):
                     continue
                 feasible_search_problems.append(search_problem)
-                if index == len(search_problems) - 1:
-                    continue
                 # update the lower bound of the next search problems to be solved
                 bound_index = 0
                 bound_criterion_index = self._projected_space_criterion_index_2_criterion_index[bound_index]
                 bound_value = search_problem.result().point_solution().point().values()[bound_criterion_index]
                 indices_to_update = [i for i in range(len(search_problems)) if i > index]
                 for index_to_update in indices_to_update:
-                    self._update_search_problem_regional_lower_bound(bound_index, bound_value, index_to_update)
+                    self._update_search_problem_region_lower_bound(bound_index, bound_value, index_to_update)
         search_problems[:] = [p for p in feasible_search_problems]
         return search_problems
 
@@ -321,7 +332,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             if DominanceRules.PointToPoint.dominated(point_solution.point(), shifted_reference_point):
                 search_problem.clear_result()
 
-    def _update_search_problem_regional_lower_bound(self, bound_index, bound_value, search_problem_index, delta=0.0):
+    def _update_search_problem_region_lower_bound(self, bound_index, bound_value, search_problem_index, delta=0.0):
         """Updates the lower bound of the region associated with the search problem at the specified index"""
         assert bound_index in self._projected_space_criterion_index_2_criterion_index.keys(), \
             "not a valid lower bound index"

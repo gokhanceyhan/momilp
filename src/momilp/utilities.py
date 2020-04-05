@@ -312,7 +312,7 @@ class ReportCreator:
 class SearchUtilities:
 
     """Implements search utilities"""
-
+            
     @staticmethod
     def create_ray_in_two_dimension(from_point, to_point):
         """Returns a ray defined by the two points"""
@@ -336,6 +336,66 @@ class SearchUtilities:
             include_edge = False
         edge_ = edge if include_edge else None
         return SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=edge_, lower_bound=lower_bound, id_=id_)
+
+    @staticmethod
+    def find_extreme_point_of_search_region_in_two_dimension(region, left_extreme=True):
+        """Finds the left extreme point of the search region in two dimension if 'left_extreme' is True, otherwise 
+        finds the right extreme point
+        
+        NOTE: Returns a tuple (a,b) where 'a' is the extreme point in two dimension and 'b' is the slope of the normal 
+        vector of the line that passes through the element of the search region active at the extreme point"""
+        candidates = []
+        if left_extreme:
+            intersection_point_of_lb_x = SearchUtilities.find_intersection_of_ray_and_bound_value_in_two_dimension(
+                region.lower_bound().bounds()[0], region.cone().left_extreme_ray(), index=0) if region.lower_bound() \
+                else None
+            if intersection_point_of_lb_x:
+                candidates.append((intersection_point_of_lb_x, 0))
+            intersection_point_of_lb_y = SearchUtilities.find_intersection_of_ray_and_bound_value_in_two_dimension(
+                region.lower_bound().bounds()[1], region.cone().left_extreme_ray(), index=1) if region.lower_bound() \
+                else None
+            if intersection_point_of_lb_y:
+                candidates.append((intersection_point_of_lb_y, float("inf")))
+            intersection_point_of_edge = SearchUtilities.find_intersection_of_ray_and_edge_in_two_dimension(
+                region.edge(), region.cone().left_extreme_ray()) if region.edge() else None
+            if intersection_point_of_edge:
+                m = region.edge().normal_vector()[1] / region.edge().normal_vector()[0] if \
+                    region.edge().normal_vector()[0] > 0 else float("inf")
+                candidates.append((intersection_point_of_edge, m))
+            selected_candidate = max(candidates, key= lambda x: x[0].values()[1])
+            alternative_candidates = [c for c in candidates if c[0].values()[1] == selected_candidate[0].values()[1]]
+            return min(alternative_candidates, key=lambda x: x[1])
+        # right extreme
+        intersection_point_of_lb_x = SearchUtilities.find_intersection_of_ray_and_bound_value_in_two_dimension(
+            region.lower_bound().bounds()[0], region.cone().right_extreme_ray(), index=0) if region.lower_bound() \
+            else None
+        if intersection_point_of_lb_x:
+            candidates.append((intersection_point_of_lb_x, 0))
+        intersection_point_of_lb_y = SearchUtilities.find_intersection_of_ray_and_bound_value_in_two_dimension(
+            region.lower_bound().bounds()[1], region.cone().right_extreme_ray(), index=1) if region.lower_bound() \
+            else None
+        if intersection_point_of_lb_y:
+            candidates.append((intersection_point_of_lb_y, float("inf")))
+        intersection_point_of_edge = SearchUtilities.find_intersection_of_ray_and_edge_in_two_dimension(
+            region.edge(), region.cone().right_extreme_ray()) if region.edge() else None
+        if intersection_point_of_edge:
+            m = region.edge().normal_vector()[1] / region.edge().normal_vector()[0] if \
+                region.edge().normal_vector()[0] > 0 else float("inf")
+            candidates.append((intersection_point_of_edge, m))
+        selected_candidate = max(candidates, key= lambda x: x[0].values()[0])
+        alternative_candidates = [c for c in candidates if c[0].values()[0] == selected_candidate[0].values()[0]]
+        return min(alternative_candidates, key=lambda x: x[1])
+
+    @staticmethod
+    def find_intersection_of_ray_and_bound_value_in_two_dimension(bound, ray, index=0):
+        """Finds and returns the intersection of a ray and a bound value
+        
+        NOTE: Raises RuntimeError if there is no intersection."""
+        assert isinstance(ray, RayInTwoDimension)
+        tan_of_ray = math.tan(math.radians(ray.angle_in_degrees()))
+        x = bound if index == 0 else float("inf") if math.isclose(tan_of_ray, 0.0) else bound / tan_of_ray
+        y = bound if index == 1 else bound * tan_of_ray
+        return PointInTwoDimension([x, y])
 
     @staticmethod
     def find_intersection_of_ray_and_edge_in_two_dimension(edge, ray):

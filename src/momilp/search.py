@@ -4,13 +4,15 @@ import abc
 import copy
 from enum import Enum
 from gurobipy import Var
+import math
 import operator
 
 from src.common.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension, RayInTwoDimension, \
-    FrontierEdgeInTwoDimension, FrontierInTwoDimension, FrontierSolution, OptimizationStatus, Point, \
-    PointInTwoDimension, SearchRegionInTwoDimension, SearchProblemResult, SliceProblemResult
+    FrontierEdgeInTwoDimension, FrontierInTwoDimension, FrontierSolution, LowerBoundInTwoDimension, \
+    OptimizationStatus, Point, PointInTwoDimension, SearchRegionInTwoDimension, SearchProblemResult, SliceProblemResult
 from src.molp.dichotomic_search.solver import BolpDichotomicSearchWithGurobiSolver
-from src.momilp.utilities import ConstraintGenerationUtilities, ModelQueryUtilities, PointComparisonUtilities
+from src.momilp.utilities import ConstraintGenerationUtilities, ModelQueryUtilities, PointComparisonUtilities, \
+    SearchUtilities
 
 
 class Problem(metaclass=abc.ABCMeta):
@@ -177,6 +179,10 @@ class SearchProblem(Problem):
         if clear_result:
             self._result = None
 
+    def update_result(self, result):
+        """Updates the result"""
+        self._result = result
+
 
 class SearchSpace:
 
@@ -198,6 +204,82 @@ class SearchSpace:
             self._search_problems.append(search_problem)
         else:
             self._search_problems.insert(index, search_problem)
+
+    @staticmethod
+    def couple_search_problems(search_problems):
+        """Couples the search regions in a way that the coupled search regions are also convex, returns the coupled 
+        search problems"""
+        coupled_search_problems = []
+        for search_problem in search_problems:
+            if len(coupled_search_problems) == 0:
+                coupled_search_problems.append(search_problem)
+                continue
+            search_problem_ = SearchSpace.couple_two_search_problem(coupled_search_problems[-1], search_problem)
+            if search_problem_ is None:
+                coupled_search_problems.append(search_problem)
+                continue
+            coupled_search_problems[-1] = search_problem_
+        return coupled_search_problems
+    
+    @staticmethod
+    def couple_two_search_problem(left_search_problem, right_search_problem):
+        """Couples two neighbor search problems, and returns the coupled search problem. If the problems cannot be 
+        coupled, returns None"""
+        # couple the search problems only if neither of them has a result
+        if left_search_problem.result() or right_search_problem.result():
+            return
+        momilp_model = left_search_problem.momilp_model()
+        left_region = left_search_problem.region()
+        right_region = right_search_problem.region()
+        left_region_p, left_region_m = SearchUtilities.find_extreme_point_of_search_region_in_two_dimension(
+            left_region, left_extreme=False)
+        right_region_p, right_region_m = SearchUtilities.find_extreme_point_of_search_region_in_two_dimension(
+            right_region, left_extreme=True)
+        same_point = left_region_p == right_region_p
+        convex = right_region_m >= left_region_m
+        if not same_point or not convex:
+            return
+        if 0 < left_region_m < float("inf") and not math.isclose(left_region_m, right_region_m, rel_tol=1e-6):
+            return
+        lb_x = left_region.lower_bound().bounds()[0]
+        to_couple_edges = []
+        if 0 < left_region_m < float("inf"):
+            assert left_region.edge() is not None, "there must be an edge in the left region"
+            to_couple_edges.append(left_region.edge())
+        if 0 < right_region_m < float("inf"):
+            assert right_region.edge() is not None, "there must be an edge in the right region"
+            to_couple_edges.append(right_region.edge())
+        coupled_edge = EdgeInTwoDimension(to_couple_edges[0].left_point(), to_couple_edges[-1].right_point()) if \
+            to_couple_edges else None
+        lb_y = right_region.lower_bound().bounds()[1]
+        coupled_bound = LowerBoundInTwoDimension([lb_x, lb_y])
+        coupled_cone = ConvexConeInPositiveQuadrant(
+            [left_region.cone().left_extreme_ray(), right_region.cone().right_extreme_ray()])
+        coupled_region = SearchRegionInTwoDimension(
+            left_region.x_obj_name(), left_region.y_obj_name(), coupled_cone, edge=coupled_edge, 
+            lower_bound=coupled_bound, validate=False)
+        results = []
+        if left_search_problem.result():
+            results.append(left_search_problem.result())
+        if right_search_problem.result():
+            results.append(right_search_problem.result())
+        if len(results) == 0:
+            better_result = None
+        elif len(results) == 1:
+            better_result = results[0]
+        else:
+            value_index_2_priority = momilp_model.objective_index_2_priority()
+            better_result = results[0] if PointComparisonUtilities.compare_to(
+                results[0].point_solution().point(), results[1].point_solution().point(), value_index_2_priority) >= 0 \
+                else results[1]
+        p = SearchProblem(momilp_model)
+        tabu_y_bars = left_search_problem.tabu_y_bars() + right_search_problem.tabu_y_bars()
+        p.update_problem(region=coupled_region, tabu_y_bars=tabu_y_bars)
+        p.update_result(better_result)
+        # print("left: ", left_search_problem.region(), left_search_problem.result().point_solution())
+        # print("right: ", right_search_problem.region(), right_search_problem.result().point_solution())
+        # print("coupled: ", p.region(), better_result.point_solution())
+        return p
 
     def delete_search_problem(self, index=-1):
         """Deletes the search problem at the given index"""

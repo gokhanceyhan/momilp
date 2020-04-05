@@ -307,7 +307,7 @@ class Point:
 
     def __eq__(self, other):
         if isinstance(other, Point):
-            return self._values == other.values()
+            return all([math.isclose(u, v, rel_tol=1e-6) for u, v in zip(self._values, other.values())])
         return False
 
     def __init__(self, values):
@@ -438,7 +438,7 @@ class SearchRegionInTwoDimension(SearchRegion):
 
     """Implements search region in two-dimensional space"""
 
-    def __init__(self, x_obj_name, y_obj_name, cone, edge=None, lower_bound=None, id_=None):
+    def __init__(self, x_obj_name, y_obj_name, cone, edge=None, lower_bound=None, id_=None, validate=True):
         self._cone = cone
         self._dim = 2
         self._edge = edge
@@ -446,7 +446,8 @@ class SearchRegionInTwoDimension(SearchRegion):
         self._id = id_ or str(id(self))
         self._x_obj_name = x_obj_name
         self._y_obj_name = y_obj_name
-        self._validate()
+        if validate:
+            self._validate()
 
     def __str__(self):
         elements = [self._cone]
