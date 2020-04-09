@@ -145,6 +145,26 @@ class EdgeInTwoDimension(Edge):
         return self._z3
 
 
+class LineInTwoDimension:
+
+    """Implements line in two dimension"""
+
+    def __init__(self, normal_vector, point):
+        self._normal_vector = normal_vector
+        self._point = point
+
+    def __str__(self):
+        return "Line: " + "%s, normal vector: %s" % (self._point, self._normal_vector)
+
+    def normal_vector(self):
+        """Returns the normal vector of the line"""
+        return self._normal_vector
+
+    def point(self):
+        """Returns the point"""
+        return self._point
+
+
 class Solution:
 
     """Implements partial solution to the problem"""
@@ -438,7 +458,7 @@ class SearchRegionInTwoDimension(SearchRegion):
 
     """Implements search region in two-dimensional space"""
 
-    def __init__(self, x_obj_name, y_obj_name, cone, edge=None, lower_bound=None, id_=None, validate=True):
+    def __init__(self, x_obj_name, y_obj_name, cone, edge=None, lower_bound=None, id_=None):
         self._cone = cone
         self._dim = 2
         self._edge = edge
@@ -446,8 +466,7 @@ class SearchRegionInTwoDimension(SearchRegion):
         self._id = id_ or str(id(self))
         self._x_obj_name = x_obj_name
         self._y_obj_name = y_obj_name
-        if validate:
-            self._validate()
+        self._validate()
 
     def __str__(self):
         elements = [self._cone]

@@ -8,8 +8,9 @@ import operator
 import os
 import pandas as pd
 from src.common.elements import point_on_ray_in_two_dimension, ConvexConeInPositiveQuadrant, Edge, EdgeInTwoDimension, \
-    FrontierEdgeInTwoDimension, FrontierInTwoDimension, LowerBoundInTwoDimension, OptimizationStatus, Point, \
-    PointInTwoDimension, PointSolution, RayInTwoDimension, SearchProblemResult, SearchRegionInTwoDimension
+    FrontierEdgeInTwoDimension, FrontierInTwoDimension, LineInTwoDimension, LowerBoundInTwoDimension, \
+    OptimizationStatus, Point, PointInTwoDimension, PointSolution, RayInTwoDimension, SearchProblemResult, \
+    SearchRegionInTwoDimension
 
 
 class ConstraintGenerationUtilities:
@@ -343,7 +344,8 @@ class SearchUtilities:
         finds the right extreme point
         
         NOTE: Returns a tuple (a,b) where 'a' is the extreme point in two dimension and 'b' is the slope of the normal 
-        vector of the line that passes through the element of the search region active at the extreme point"""
+        vector of the line that passes through the element of the search region active at the extreme point. If more 
+        than one element is active at the exteme point, the one with the minimum slope is returned"""
         candidates = []
         if left_extreme:
             intersection_point_of_lb_x = SearchUtilities.find_intersection_of_ray_and_bound_value_in_two_dimension(
@@ -398,7 +400,7 @@ class SearchUtilities:
         return PointInTwoDimension([x, y])
 
     @staticmethod
-    def find_intersection_of_ray_and_edge_in_two_dimension(edge, ray):
+    def find_intersection_of_ray_and_edge_in_two_dimension(edge, ray, tol=1e-6):
         """Finds and returns the intersection of a ray and an edge
         
         NOTE: Raises RuntimeError if there is no intersection."""
@@ -410,11 +412,24 @@ class SearchUtilities:
         tan_of_right_extreme_point = edge.right_point().z2() / edge.right_point().z1() if edge.right_point().z1() != 0 \
             else float("inf")
         degrees_of_right_extreme_point = math.degrees(math.atan(tan_of_right_extreme_point))
-        if ray.angle_in_degrees() > degrees_of_left_extreme_point or \
-                ray.angle_in_degrees() < degrees_of_right_extreme_point:
+        if ray.angle_in_degrees() > degrees_of_left_extreme_point + tol or \
+                ray.angle_in_degrees() < degrees_of_right_extreme_point - tol:
             raise RuntimeError("the '%s' ray does not intersect the '%s' edge" % (ray, edge))
         tan_of_ray = math.tan(math.radians(ray.angle_in_degrees()))
         x = edge.edge_value() / np.dot(edge.normal_vector(), [1, tan_of_ray])
+        y = tan_of_ray * x
+        return PointInTwoDimension([x, y])
+
+    @staticmethod
+    def find_intersection_of_ray_and_line_in_two_dimension(line, ray):
+        """Finds and returns the intersection of a ray and a line
+        
+        NOTE: Raises RuntimeError if there is no intersection."""
+        tan_of_ray = math.tan(math.radians(ray.angle_in_degrees()))
+        m_line = -1 * line.normal_vector()[0] / line.normal_vector()[1] if line.normal_vector()[1] else float("inf")
+        if tan_of_ray == m_line:
+            raise RuntimeError("the '%s' ray does not intersect the '%s' line" % (ray, line))
+        x = (line.point().values()[1] - m_line * line.point().values()[0]) / (tan_of_ray - m_line)
         y = tan_of_ray * x
         return PointInTwoDimension([x, y])
 
