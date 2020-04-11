@@ -293,19 +293,6 @@ class SearchSpace:
         p.update_result(best_result)
         for c in candidate_results:
             p.add_candidate_result(c)
-
-        print("coupled!")
-        print("left: ", left_search_problem.region())
-        print("right: ", right_search_problem.region())
-        print("coupled: ", p.region())
-        print("left result: ", left_search_problem.result().point_solution() if left_search_problem else None)
-        print("left candidates: ", [str(r.point_solution()) for r in left_search_problem.candidate_results()])
-        print("right result: ", right_search_problem.result().point_solution() if right_search_problem else None)
-        print("right candidates: ", [str(r.point_solution()) for r in right_search_problem.candidate_results()])
-        print("best result", best_result.point_solution())
-        print("coupled candidates: ", [str(r.point_solution()) for r in p.candidate_results()])
-        print("tabus: ", p.tabu_y_bars())
-
         return p
 
     def add_search_problem(self, search_problem, index=None):

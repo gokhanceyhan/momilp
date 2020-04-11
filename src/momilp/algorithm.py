@@ -505,6 +505,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             search_space.delete_search_problem(selected_search_problem_index)
             for p in child_search_problems:
                 search_space.add_search_problem(p)
+            # couple search problems
+            state.search_space().couple_search_problems()
             # log the progress
             logging.info("Iteration '%d' with '%s'" % (iteration_index, selected_point_solution.point()))
             # log the details in the debug mode
