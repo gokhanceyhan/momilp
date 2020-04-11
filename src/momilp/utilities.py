@@ -8,8 +8,9 @@ import operator
 import os
 import pandas as pd
 from src.common.elements import point_on_ray_in_two_dimension, ConvexConeInPositiveQuadrant, Edge, EdgeInTwoDimension, \
-    FrontierEdgeInTwoDimension, FrontierInTwoDimension, LowerBoundInTwoDimension, OptimizationStatus, Point, \
-    PointInTwoDimension, PointSolution, RayInTwoDimension, SearchProblemResult, SearchRegionInTwoDimension
+    FrontierEdgeInTwoDimension, FrontierInTwoDimension, LineInTwoDimension, LowerBoundInTwoDimension, \
+    OptimizationStatus, Point, PointInTwoDimension, PointSolution, RayInTwoDimension, SearchProblemResult, \
+    SearchRegionInTwoDimension
 
 
 class ConstraintGenerationUtilities:
@@ -24,7 +25,7 @@ class ConstraintGenerationUtilities:
     @staticmethod
     def create_constraints_for_cone_in_positive_quadrant(momilp_model, cone, x_var, y_var, name=None):
         """Creates and adds the constraints to the model for the given cone, returns the constraints"""
-        assert isinstance(cone, ConvexConeInPositiveQuadrant)
+        assert isinstance(cone, ConvexConeInPositiveQuadrant), "incorrect cone type"
         constraints = []
         name = name or str(id(cone))
         left_extreme_ray = cone.left_extreme_ray()
@@ -48,7 +49,7 @@ class ConstraintGenerationUtilities:
     def create_constraint_for_edge_in_two_dimension(
             momilp_model, edge, x_var, y_var, name=None, sense=GRB.GREATER_EQUAL):
         """Creates and adds the constraint to the model for the given edge, returns the constraint"""
-        assert isinstance(edge, EdgeInTwoDimension)
+        assert isinstance(edge, EdgeInTwoDimension), "incorrect edge type"
         name = name or str(id(edge))
         name_ = "_".join([ConstraintGenerationUtilities._EDGE_CONSTRAINT_NAME_PREFIX, name])
         left_point = edge.left_point()
@@ -65,7 +66,7 @@ class ConstraintGenerationUtilities:
     @staticmethod
     def create_constraints_for_lower_bound_in_two_dimension(momilp_model, lower_bound, x_var, y_var, name=None):
         """Creates and adds the constraints to the model for the given lower bound, returns the constraints"""
-        assert isinstance(lower_bound, LowerBoundInTwoDimension)
+        assert isinstance(lower_bound, LowerBoundInTwoDimension), "incorrect lower bound type"
         name = name or str(id(lower_bound))
         name_ = "_".join([ConstraintGenerationUtilities._LOWER_BOUND_CONSTRAINT_NAME_PREFIX, name, "z1"])
         constraints = []
@@ -135,7 +136,8 @@ class ModelQueryUtilities:
     }
 
     @staticmethod
-    def query_optimal_solution(model, y, raise_error_if_infeasible=False, solver_stage=None):
+    def query_optimal_solution(
+            model, y, raise_error_if_infeasible=False, round_integer_vector_values=True, solver_stage=None):
         """Queries the model for a feasible solution, and returns the best feasible solution if there exists any"""
         status = ModelQueryUtilities.GUROBI_STATUS_2_OPTIMIZATION_STATUS.get(
             model.getAttr("Status"), OptimizationStatus.UNDEFINED)
@@ -154,7 +156,7 @@ class ModelQueryUtilities:
         for obj_index in range(model.getAttr("NumObj")):
             obj = model.getObjective(index=obj_index)
             values.append(obj.getValue())
-        y_bar = [round(var.x) for var in y]
+        y_bar = [round(var.x) if round_integer_vector_values else var.x for var in y]
         return SearchProblemResult(PointSolution(Point(values), y_bar), status)
 
 
@@ -311,7 +313,7 @@ class ReportCreator:
 class SearchUtilities:
 
     """Implements search utilities"""
-
+            
     @staticmethod
     def create_ray_in_two_dimension(from_point, to_point):
         """Returns a ray defined by the two points"""
@@ -322,7 +324,83 @@ class SearchUtilities:
         return RayInTwoDimension(math.degrees(math.atan(tan)), from_point)
 
     @staticmethod
-    def find_intersection_of_ray_and_edge_in_two_dimension(edge, ray):
+    def create_search_region_in_two_dimension(x_obj_name, y_obj_name, cone, edge=None, lower_bound=None, id_=None):
+        """Cretaes a search region in two dimension with a minimum number of constraints"""
+        if not edge and not lower_bound:
+            return SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, id_=id_)
+        if not edge:
+            return SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, lower_bound=lower_bound, id_=id_)
+        bounds = lower_bound.bounds()
+        include_edge = True
+        if bounds[0] >= edge.right_point().values()[0] or bounds[1] >= edge.left_point().values()[1] or \
+            np.dot(edge.normal_vector(), bounds) >= edge.edge_value():
+            include_edge = False
+        edge_ = edge if include_edge else None
+        return SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=edge_, lower_bound=lower_bound, id_=id_)
+
+    @staticmethod
+    def find_extreme_point_of_search_region_in_two_dimension(region, left_extreme=True):
+        """Finds the left extreme point of the search region in two dimension if 'left_extreme' is True, otherwise 
+        finds the right extreme point
+        
+        NOTE: Returns a tuple (a,b) where 'a' is the extreme point in two dimension and 'b' is the slope of the normal 
+        vector of the line that passes through the element of the search region active at the extreme point. If more 
+        than one element is active at the exteme point, the one with the minimum slope is returned"""
+        candidates = []
+        if left_extreme:
+            intersection_point_of_lb_x = SearchUtilities.find_intersection_of_ray_and_bound_value_in_two_dimension(
+                region.lower_bound().bounds()[0], region.cone().left_extreme_ray(), index=0) if region.lower_bound() \
+                else None
+            if intersection_point_of_lb_x:
+                candidates.append((intersection_point_of_lb_x, 0))
+            intersection_point_of_lb_y = SearchUtilities.find_intersection_of_ray_and_bound_value_in_two_dimension(
+                region.lower_bound().bounds()[1], region.cone().left_extreme_ray(), index=1) if region.lower_bound() \
+                else None
+            if intersection_point_of_lb_y:
+                candidates.append((intersection_point_of_lb_y, float("inf")))
+            intersection_point_of_edge = SearchUtilities.find_intersection_of_ray_and_edge_in_two_dimension(
+                region.edge(), region.cone().left_extreme_ray()) if region.edge() else None
+            if intersection_point_of_edge:
+                m = region.edge().normal_vector()[1] / region.edge().normal_vector()[0] if \
+                    region.edge().normal_vector()[0] > 0 else float("inf")
+                candidates.append((intersection_point_of_edge, m))
+            selected_candidate = max(candidates, key= lambda x: x[0].values()[1])
+            alternative_candidates = [c for c in candidates if c[0].values()[1] == selected_candidate[0].values()[1]]
+            return min(alternative_candidates, key=lambda x: x[1])
+        # right extreme
+        intersection_point_of_lb_x = SearchUtilities.find_intersection_of_ray_and_bound_value_in_two_dimension(
+            region.lower_bound().bounds()[0], region.cone().right_extreme_ray(), index=0) if region.lower_bound() \
+            else None
+        if intersection_point_of_lb_x:
+            candidates.append((intersection_point_of_lb_x, 0))
+        intersection_point_of_lb_y = SearchUtilities.find_intersection_of_ray_and_bound_value_in_two_dimension(
+            region.lower_bound().bounds()[1], region.cone().right_extreme_ray(), index=1) if region.lower_bound() \
+            else None
+        if intersection_point_of_lb_y:
+            candidates.append((intersection_point_of_lb_y, float("inf")))
+        intersection_point_of_edge = SearchUtilities.find_intersection_of_ray_and_edge_in_two_dimension(
+            region.edge(), region.cone().right_extreme_ray()) if region.edge() else None
+        if intersection_point_of_edge:
+            m = region.edge().normal_vector()[1] / region.edge().normal_vector()[0] if \
+                region.edge().normal_vector()[0] > 0 else float("inf")
+            candidates.append((intersection_point_of_edge, m))
+        selected_candidate = max(candidates, key= lambda x: x[0].values()[0])
+        alternative_candidates = [c for c in candidates if c[0].values()[0] == selected_candidate[0].values()[0]]
+        return min(alternative_candidates, key=lambda x: x[1])
+
+    @staticmethod
+    def find_intersection_of_ray_and_bound_value_in_two_dimension(bound, ray, index=0):
+        """Finds and returns the intersection of a ray and a bound value
+        
+        NOTE: Raises RuntimeError if there is no intersection."""
+        assert isinstance(ray, RayInTwoDimension)
+        tan_of_ray = math.tan(math.radians(ray.angle_in_degrees()))
+        x = bound if index == 0 else float("inf") if math.isclose(tan_of_ray, 0.0) else bound / tan_of_ray
+        y = bound if index == 1 else bound * tan_of_ray
+        return PointInTwoDimension([x, y])
+
+    @staticmethod
+    def find_intersection_of_ray_and_edge_in_two_dimension(edge, ray, tol=1e-6):
         """Finds and returns the intersection of a ray and an edge
         
         NOTE: Raises RuntimeError if there is no intersection."""
@@ -334,11 +412,24 @@ class SearchUtilities:
         tan_of_right_extreme_point = edge.right_point().z2() / edge.right_point().z1() if edge.right_point().z1() != 0 \
             else float("inf")
         degrees_of_right_extreme_point = math.degrees(math.atan(tan_of_right_extreme_point))
-        if ray.angle_in_degrees() > degrees_of_left_extreme_point or \
-                ray.angle_in_degrees() < degrees_of_right_extreme_point:
+        if ray.angle_in_degrees() > degrees_of_left_extreme_point + tol or \
+                ray.angle_in_degrees() < degrees_of_right_extreme_point - tol:
             raise RuntimeError("the '%s' ray does not intersect the '%s' edge" % (ray, edge))
         tan_of_ray = math.tan(math.radians(ray.angle_in_degrees()))
         x = edge.edge_value() / np.dot(edge.normal_vector(), [1, tan_of_ray])
+        y = tan_of_ray * x
+        return PointInTwoDimension([x, y])
+
+    @staticmethod
+    def find_intersection_of_ray_and_line_in_two_dimension(line, ray):
+        """Finds and returns the intersection of a ray and a line
+        
+        NOTE: Raises RuntimeError if there is no intersection."""
+        tan_of_ray = math.tan(math.radians(ray.angle_in_degrees()))
+        m_line = -1 * line.normal_vector()[0] / line.normal_vector()[1] if line.normal_vector()[1] else float("inf")
+        if tan_of_ray == m_line:
+            raise RuntimeError("the '%s' ray does not intersect the '%s' line" % (ray, line))
+        x = (line.point().values()[1] - m_line * line.point().values()[0]) / (tan_of_ray - m_line)
         y = tan_of_ray * x
         return PointInTwoDimension([x, y])
 
@@ -367,16 +458,18 @@ class SearchUtilities:
                 cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
                 bounds = [point.z1() + lower_bound_delta, initial_lb[1]]
                 lb = LowerBoundInTwoDimension(bounds)
-                regions.append(
-                    SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb))
+                region_ = SearchUtilities.create_search_region_in_two_dimension(
+                    x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb)
+                regions.append(region_)
             elif point_on_ray_in_two_dimension(point, region.cone().right_extreme_ray()):
                 left_extreme_ray = region.cone().left_extreme_ray()
                 right_extreme_ray = region.cone().right_extreme_ray()
                 cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
                 bounds = [initial_lb[0], point.z2() + lower_bound_delta]
                 lb = LowerBoundInTwoDimension(bounds)
-                regions.append(
-                    SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb))
+                region_ = SearchUtilities.create_search_region_in_two_dimension(
+                    x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb)
+                regions.append(region_)
             else:
                 middle_ray = SearchUtilities.create_ray_in_two_dimension(origin, point)
                 left_edge = None
@@ -392,16 +485,18 @@ class SearchUtilities:
                 cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
                 bounds = [initial_lb[0], point.z2() + lower_bound_delta]
                 lb = LowerBoundInTwoDimension(bounds)
-                regions.append(
-                    SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=left_edge, lower_bound=lb))
+                region_ = SearchUtilities.create_search_region_in_two_dimension(
+                    x_obj_name, y_obj_name, cone, edge=left_edge, lower_bound=lb)
+                regions.append(region_)
                 # right cone
                 right_extreme_ray = region.cone().right_extreme_ray()
                 left_extreme_ray = middle_ray
                 cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
                 bounds = [point.z1() + lower_bound_delta, initial_lb[1]]
                 lb = LowerBoundInTwoDimension(bounds)
-                regions.append(
-                    SearchRegionInTwoDimension(x_obj_name, y_obj_name, cone, edge=right_edge, lower_bound=lb))
+                region_ = SearchUtilities.create_search_region_in_two_dimension(
+                    x_obj_name, y_obj_name, cone, edge=right_edge, lower_bound=lb)
+                regions.append(region_)
             return regions
         # add a region for the left-most region if the left-most point is not on the left extreme ray of the region
         left_most_point = frontier.edges()[0].left_point()
@@ -412,7 +507,7 @@ class SearchUtilities:
                 edge_intersection_point = SearchUtilities.find_intersection_of_ray_and_edge_in_two_dimension(
                     region.edge(), right_extreme_ray)
                 edge = EdgeInTwoDimension(region.edge().left_point(), edge_intersection_point)
-            left_most_region = SearchRegionInTwoDimension(
+            left_most_region = SearchUtilities.create_search_region_in_two_dimension(
                 x_obj_name, y_obj_name, 
                 ConvexConeInPositiveQuadrant([region.cone().left_extreme_ray(), right_extreme_ray]), 
                 edge=edge,
@@ -423,10 +518,10 @@ class SearchUtilities:
             left_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, edge.left_point())
             right_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, edge.right_point())
             cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
-            regions.append(
-                SearchRegionInTwoDimension(
-                    x_obj_name, y_obj_name, cone, edge=edge, 
-                    lower_bound=LowerBoundInTwoDimension([initial_lb[0], initial_lb[1]])))
+            region_ = SearchUtilities.create_search_region_in_two_dimension(
+                x_obj_name, y_obj_name, cone, edge=edge, 
+                lower_bound=LowerBoundInTwoDimension([initial_lb[0], initial_lb[1]]))
+            regions.append(region_)
         # add a region for the right-most region
         right_most_point = frontier.edges()[-1].right_point()
         if not point_on_ray_in_two_dimension(right_most_point, region.cone().right_extreme_ray()):
@@ -436,7 +531,7 @@ class SearchUtilities:
                 edge_intersection_point = SearchUtilities.find_intersection_of_ray_and_edge_in_two_dimension(
                     region.edge(), left_extreme_ray)
                 edge = EdgeInTwoDimension(edge_intersection_point, region.edge().right_point())
-            right_most_region = SearchRegionInTwoDimension(
+            right_most_region = SearchUtilities.create_search_region_in_two_dimension(
                 x_obj_name, y_obj_name, 
                 ConvexConeInPositiveQuadrant([left_extreme_ray, region.cone().right_extreme_ray()]), 
                 edge=edge, 

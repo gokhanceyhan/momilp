@@ -145,6 +145,26 @@ class EdgeInTwoDimension(Edge):
         return self._z3
 
 
+class LineInTwoDimension:
+
+    """Implements line in two dimension"""
+
+    def __init__(self, normal_vector, point):
+        self._normal_vector = normal_vector
+        self._point = point
+
+    def __str__(self):
+        return "Line: " + "%s, normal vector: %s" % (self._point, self._normal_vector)
+
+    def normal_vector(self):
+        """Returns the normal vector of the line"""
+        return self._normal_vector
+
+    def point(self):
+        """Returns the point"""
+        return self._point
+
+
 class Solution:
 
     """Implements partial solution to the problem"""
@@ -307,7 +327,7 @@ class Point:
 
     def __eq__(self, other):
         if isinstance(other, Point):
-            return self._values == other.values()
+            return all([math.isclose(u, v, rel_tol=1e-6) for u, v in zip(self._values, other.values())])
         return False
 
     def __init__(self, values):
