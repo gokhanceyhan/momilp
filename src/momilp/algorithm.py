@@ -11,7 +11,7 @@ from time import time
 
 from src.common.elements import ConvexConeInPositiveQuadrant, Edge, EdgeInTwoDimension, EdgeSolution, \
     RayInTwoDimension, FrontierInTwoDimension, FrontierSolution, LowerBoundInTwoDimension, OptimizationStatus, Point, \
-    PointInTwoDimension, PointSolution, SearchRegionInTwoDimension, SliceProblemResult
+    PointInTwoDimension, PointSolution, SearchRegionInTwoDimension, SearchProblemResult, SliceProblemResult
 from src.momilp.dominance import DominanceRules, ModelBasedDominanceFilter
 from src.momilp.model import GurobiMomilpModel
 from src.momilp.search import SearchProblem, SearchSpace, SliceProblem
@@ -108,8 +108,6 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         self._working_dir = working_dir
         self._initialize()
         
-        self._inf_m = 0
-
     def _add_iteration(self, iteration_index, iteration_time_in_seconds, selected_point_solution):
         """Creates and add the completed iteration to the list of iterations in the state"""
         state = self._state
@@ -222,6 +220,75 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         for key, value in kwargs.items():
             logging.info("%s = %s" % (key, value))
 
+    def _partition_search_problem(self, frontier, selected_search_problem, lower_bound_delta=0.0, tol=1e-6):
+        """Partitions the search problem and returns the new search problems"""
+        # add the integer vector to the list of tabu integer vectors
+        selected_region = selected_search_problem.region()
+        selected_point_solution = selected_search_problem.result().point_solution()
+        y_bar = selected_point_solution.y_bar()
+        tabu_y_bars = selected_search_problem.tabu_y_bars()
+        if y_bar not in tabu_y_bars:
+            tabu_y_bars.append(y_bar)
+        # partition the selected search region
+        child_search_regions = SearchUtilities.partition_search_region_in_two_dimension(
+            frontier, selected_region, lower_bound_delta=lower_bound_delta)
+        # test the child search regions for infeasibility
+        pseudo_search_region = self._create_pseudo_search_region_in_two_dimension(frontier)
+        pseudo_search_problem = None
+        feasible_child_region_index = None
+        if pseudo_search_region:
+            pseudo_search_problem = SearchProblem(selected_search_problem.momilp_model())
+            pseudo_search_problem.update_problem(region=pseudo_search_region, tabu_y_bars=tabu_y_bars)
+            self._solve_search_problem(pseudo_search_problem)
+            if ConeBasedSearchAlgorithm._is_problem_feasible(pseudo_search_problem):
+                if self._momilp_model.biobjective():
+                    point = pseudo_search_problem.result().point_solution().point()
+                    projected_space_criterion_indices = self._projected_space_criterion_index_2_criterion_index.values()
+                    point_in_two_dimension = TypeConversionUtilities.point_to_point_in_two_dimension(
+                        projected_space_criterion_indices, point)
+                    ray_of_point = SearchUtilities.create_ray_in_two_dimension(
+                        PointInTwoDimension([0, 0]), point_in_two_dimension)
+                    # find the index of the child region where the point is found
+                    for child_search_region_index, region in enumerate(child_search_regions):
+                        if region.cone().left_extreme_ray().angle_in_degrees() < ray_of_point.angle_in_degrees() - tol:
+                            continue
+                        if ray_of_point.angle_in_degrees() < region.cone().right_extreme_ray().angle_in_degrees() - tol:
+                            continue
+                        feasible_child_region_index = child_search_region_index
+                    assert feasible_child_region_index is not None, "this should not happen"
+                    # the child regions on the right-hand-side cannot have a nd point
+                    child_search_regions = child_search_regions[:feasible_child_region_index + 1]
+            else:
+                child_search_regions_ = []
+                if not point_on_ray_in_two_dimension(
+                        frontier.edges()[0].left_point(), selected_region.cone().left_extreme_ray()):
+                    child_search_regions_.append(child_search_regions[0])
+                if not self._momilp_model.biobjective() and not point_on_ray_in_two_dimension(
+                        frontier.edges()[-1].right_point(), selected_region.cone().right_extreme_ray()):
+                    child_search_regions_.append(child_search_regions[-1])
+                child_search_regions = child_search_regions_
+        # create the new search problems
+        search_problems = []
+        for child_index, region in enumerate(child_search_regions):
+            search_problem = SearchProblem(selected_search_problem.momilp_model())
+            search_problem.update_problem(region=region, tabu_y_bars=tabu_y_bars)
+            search_problems.append(search_problem)
+            if child_index != feasible_child_region_index:
+                continue
+            if not pseudo_search_problem or not ConeBasedSearchAlgorithm._is_problem_feasible(pseudo_search_problem):
+                continue
+            status = pseudo_search_problem.result().status()
+            point_solution = pseudo_search_problem.result().point_solution()
+            point = point_solution.point()
+            projected_space_criterion_indices = self._projected_space_criterion_index_2_criterion_index.values()
+            point_in_two_dimension = TypeConversionUtilities.point_to_point_in_two_dimension(
+                projected_space_criterion_indices, point)
+            if DominanceRules.PointToFrontier.dominated(point_in_two_dimension, frontier):
+                continue
+            # set the already found point in pseudo problem in case it is not dominated by the frontier
+            search_problem.update_result(SearchProblemResult(point_solution, status))
+        return search_problems
+
     def _select_search_problem_and_index(self, search_problems):
         """Selects the search problem, returns with index"""
         selected_search_problem_and_index = None
@@ -245,13 +312,9 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             self._num_milp_solved += 1
         end = time()
         self._elapsed_time_in_seconds_for_search_problem += end - start
-
-        if result.status() not in [OptimizationStatus.OPTIMAL, OptimizationStatus.FEASIBLE]:
-            self._inf_m += 1
-
         return result
 
-    def _solve_search_problems(self, iteration_index, search_problems, infeasible_search_problems_starting_index=None):
+    def _solve_search_problems(self, iteration_index, search_problems):
         """Solves and returns the search problems"""
         # search problems are sorted based on the regions from north-west to south-east in the x-y plane
         # x-axis: the criterion at index 0 of the projected space criteria
@@ -260,24 +323,13 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         # idea: if a point in the left-hand-side region has a point, z^l, with z^l_x value larger than the z_^r_x value 
         # of the point in the right-hand-side region, z^r, then z^l dominated z^r.
         feasible_search_problems = []
-        # note: In the bi-objective case, we already know that the regions on the right-hand-side of the last child 
-        # search problem cannot have a nondominated point as we generete points in non-increasing values in the x-axis 
-        # objective
-        search_problems[:] = search_problems[:infeasible_search_problems_starting_index] if \
-            self._momilp_model.biobjective() and infeasible_search_problems_starting_index else search_problems
-        # run region coupling
-        print("num_regions_before: ", len(search_problems))
-        # self._state.search_space().couple_search_problems()
-        # print("num_regions_after: ", len(search_problems))
         # solve the search problems
-        c = 0
-        for index, search_problem in enumerate(search_problems):
+        for search_problem in search_problems:
             if search_problem.result():
                 feasible_search_problems.append(search_problem)
                 continue
             try:
                 self._solve_search_problem(search_problem)
-                c += 1
             except BaseException as e:
                 self._errors.append(
                     "the problem '%s' failed with error '%s' in iteration '%s'" % (
@@ -285,11 +337,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
                 search_problem.momilp_model().write(os.path.join(self._working_dir, str(id(search_problem)) + ".lp"))
             else:
                 if not ConeBasedSearchAlgorithm._is_problem_feasible(search_problem):
-                    print("inf problem index: ", index)
                     continue
                 feasible_search_problems.append(search_problem)
-        print("milp_solve: ", c)
-        print("num_feas: ", len(feasible_search_problems))
         search_problems[:] = [p for p in feasible_search_problems]
         return search_problems
 
@@ -423,16 +472,10 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         search_problems = search_space.search_problems()
         lower_bound_delta = ConeBasedSearchAlgorithm._LOWER_BOUND_DELTA if not self._explore_decision_space else 0.0
         iteration_index = ConeBasedSearchAlgorithm._STARTING_ITERATION_INDEX
-        first_child_search_problem_index = None
-        last_child_search_problem_index = None
-        infeasible_search_problems_starting_index = None
         while search_problems:
             iteration_start_time = time()
             # search all of the regions and remove the infeasible ones
-            print("first-last child index: ", first_child_search_problem_index,last_child_search_problem_index)
-            search_problems = self._solve_search_problems(
-                iteration_index, search_problems, 
-                infeasible_search_problems_starting_index=infeasible_search_problems_starting_index)
+            search_problems = self._solve_search_problems(iteration_index, search_problems)
             if not search_problems:
                 state.solution_state().move_weakly_nondominated_to_nondominated()
                 break
@@ -442,7 +485,11 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             selected_search_problem_index = selected_search_problem_and_index[1]
             selected_region = selected_search_problem.region()
             selected_point_solution = selected_search_problem.result().point_solution()
-            y_bar = selected_point_solution.y_bar()
+            # In the bi-objective case, we already know that the regions on the right-hand-side of the selected
+            # search problem cannot have a nondominated point as we generete points in non-increasing values in the 
+            # x-axis objective
+            if self._momilp_model.biobjective():
+                search_problems[:] = search_problems[:selected_search_problem_index + 1]
             # solve the slice problem
             slice_problem_result = self._solve_slice_problem(
                 iteration_index, selected_region, selected_point_solution)
@@ -453,77 +500,11 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
                 delta=lower_bound_delta)
             # update the state
             self._update_state(selected_point_solution, frontier, iteration_index)
-            # add the integer vector to the list of tabu integer vectors
-            tabu_y_bars = selected_search_problem.tabu_y_bars()
-            if y_bar not in tabu_y_bars:
-                tabu_y_bars.append(y_bar)
-            # partition the selected search region
-            child_search_regions = SearchUtilities.partition_search_region_in_two_dimension(
-                frontier, selected_region, lower_bound_delta=lower_bound_delta)
-            # test the child search regions for infeasibility
-            pseudo_search_region = self._create_pseudo_search_region_in_two_dimension(frontier)
-            pseudo_search_problem_result = None
-            feasible_child_region_index = None
-            if pseudo_search_region:
-                pseudo_search_problem = SearchProblem(selected_search_problem.momilp_model())
-                pseudo_search_problem.update_problem(region=pseudo_search_region, tabu_y_bars=tabu_y_bars)
-                self._solve_search_problem(pseudo_search_problem)
-                if ConeBasedSearchAlgorithm._is_problem_feasible(pseudo_search_problem):
-                    pseudo_search_problem_result = pseudo_search_problem.result()
-                else:
-                    child_search_regions_ = []
-                    if not point_on_ray_in_two_dimension(
-                            frontier.edges()[0].left_point(), selected_region.cone().left_extreme_ray()):
-                        child_search_regions_.append(child_search_regions[0])
-                    if not point_on_ray_in_two_dimension(
-                            frontier.edges()[-1].right_point(), selected_region.cone().right_extreme_ray()):
-                        child_search_regions_.append(child_search_regions[-1])
-                    child_search_regions = child_search_regions_
-                if pseudo_search_problem_result and self._momilp_model.biobjective():
-                    point = pseudo_search_problem_result.point_solution().point()
-                    projected_space_criterion_indices = self._projected_space_criterion_index_2_criterion_index.values()
-                    point_in_two_dimension = TypeConversionUtilities.point_to_point_in_two_dimension(
-                        projected_space_criterion_indices, point)
-                    ray_of_point = SearchUtilities.create_ray_in_two_dimension(
-                        PointInTwoDimension([0, 0]), point_in_two_dimension)
-                    # find the index of the child region where the point is found
-                    tol = 1e-6
-                    for child_search_region_index, region in enumerate(child_search_regions):
-                        if region.cone().left_extreme_ray().angle_in_degrees() < ray_of_point.angle_in_degrees() - tol:
-                            continue
-                        if ray_of_point.angle_in_degrees() < region.cone().right_extreme_ray().angle_in_degrees() - tol:
-                            continue
-                        feasible_child_region_index = child_search_region_index
-                    assert feasible_child_region_index is not None, "this should not happen"
-                    child_search_regions_ = child_search_regions[:feasible_child_region_index + 1]
-                    if feasible_child_region_index < len(child_search_regions) - 1 and not \
-                            point_on_ray_in_two_dimension(
-                                frontier.edges()[-1].right_point(), selected_region.cone().right_extreme_ray()):
-                        child_search_regions_.append(child_search_regions[-1])
-                    child_search_regions = child_search_regions_   
-            # create the new search problems
-            print("feasible child index: ", feasible_child_region_index)
-            for child_index, region in enumerate(child_search_regions):
-                search_problem = SearchProblem(selected_search_problem.momilp_model())
-                search_problem.update_problem(region=region, tabu_y_bars=tabu_y_bars)
-                search_space.add_search_problem(search_problem, index=selected_search_problem_index + 1 + child_index)
-                if child_index != feasible_child_region_index:
-                    continue
-                if pseudo_search_problem_result:
-                    point = pseudo_search_problem_result.point_solution().point()
-                    projected_space_criterion_indices = self._projected_space_criterion_index_2_criterion_index.values()
-                    point_in_two_dimension = TypeConversionUtilities.point_to_point_in_two_dimension(
-                        projected_space_criterion_indices, point)
-                    print(point_in_two_dimension, frontier, DominanceRules.PointToFrontier.dominated(point_in_two_dimension, frontier))
-                    if not DominanceRules.PointToFrontier.dominated(point_in_two_dimension, frontier):
-                        print("able to set the result")
-                        search_problem.update_result(pseudo_search_problem_result)
+            # partition the selected region and create the new search problems
+            child_search_problems = self._partition_search_problem(frontier, selected_search_problem)
             search_space.delete_search_problem(selected_search_problem_index)
-            first_child_search_problem_index = selected_search_problem_index if child_search_regions else None
-            last_child_search_problem_index = first_child_search_problem_index + len(child_search_regions) - 1 if \
-                child_search_regions else None
-            infeasible_search_problems_starting_index = last_child_search_problem_index + 1 if \
-                child_search_regions else selected_search_problem_index
+            for p in child_search_problems:
+                search_space.add_search_problem(p)
             # log the progress
             logging.info("Iteration '%d' with '%s'" % (iteration_index, selected_point_solution.point()))
             # log the details in the debug mode
@@ -531,8 +512,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
                 log = {
                     "selected region": selected_region,
                     "frontier": frontier,
-                    "num_milp": self._num_milp_solved,
-                    "num_new_regions_created": child_index + 1
+                    "num_milp": self._num_milp_solved
                 }
                 ConeBasedSearchAlgorithm._log_iteration_status(**log)
             # create and add the iteration to the state
@@ -541,6 +521,4 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             self._add_iteration(iteration_index, iteration_time_in_seconds, selected_point_solution)
             # update the iteration index
             iteration_index += 1
-            print("num_inf: ", self._inf_m)
         return self._state
-    
