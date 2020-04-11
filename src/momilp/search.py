@@ -212,12 +212,8 @@ class SearchSpace:
         # NOTE: Search problem are always sorted based on the value of projected space criterion at index 0
         self._search_problems = []
 
-    def _collect_and_sort_results_for_coupling(self, search_problems, value_index_2_priority=None):
+    def _collect_and_sort_results_for_coupling(self, search_problems, value_index_2_priority):
         """Collects the available results in the search problems, sorts them and returns the sorted list"""
-        if value_index_2_priority is None:
-            value_index_2_priority[self._primary_criterion_index] = self._dimension
-            remaining_criterion_indices = [i for i in range(self._dimension) if i != self._primary_criterion_index]
-            value_index_2_priority = {j: i + 1 for i, j in enumerate(remaining_criterion_indices)}
         value_index_and_priorities = [(i, p) for i, p in value_index_2_priority.items()]
         value_index_and_priorities = sorted(value_index_and_priorities, key=lambda t: t[1], reverse=True)
         prioritized_value_indices = [i for i, _ in value_index_and_priorities]
@@ -287,7 +283,7 @@ class SearchSpace:
         # collect all the results in the coupled regions and select the best one
         value_index_2_priority = momilp_model.objective_index_2_priority()
         results = self._collect_and_sort_results_for_coupling(
-            [left_search_problem, right_search_problem], value_index_2_priority=value_index_2_priority)
+            [left_search_problem, right_search_problem], value_index_2_priority)
         best_result = results[0] if results else None
         candidate_results = results[1:] if results else []
         p.update_result(best_result)
