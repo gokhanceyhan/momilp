@@ -430,7 +430,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             previous_selected_point_solution = state.iterations()[iteration_index - 1].selected_point_solution()
             if selected_point_solution.point().values()[self._primary_objective_index] < \
                     previous_selected_point_solution.point().values()[self._primary_objective_index]:
-                state.solution_state().move_weakly_nondominated_to_nondominated()
+                state.solution_state().move_weakly_nondominated_to_nondominated(
+                    constant_value_index=self._primary_objective_index)
             else:
                 # we can apply the following tests to detect the nondominated points or edges since we know that 
                 # the selected solution is the one having the highest value in the first criterion of the not-yet 
@@ -450,10 +451,12 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             state.solution_state().add_efficient_integer_vector(selected_point_solution.y_bar())
         else:
             edges = frontier.edges()
-            for edge in edges:
+            # add the edges in reverse order since the generated points are sorted from right-to-left in two dimension
+            for edge in edges[::-1]:
                 solution_edge = self._convert_edge_in_projected_space_to_edge_in_original_space(edge)
                 state.solution_state().add_weakly_nondominated_edge(
-                    EdgeSolution(solution_edge, selected_point_solution.y_bar()))
+                    EdgeSolution(solution_edge, selected_point_solution.y_bar()), 
+                    constant_value_index=self._primary_objective_index)
 
     def dominance_filter(self):
         """Returns the dominance filter"""
@@ -477,7 +480,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             # search all of the regions and remove the infeasible ones
             search_problems = self._solve_search_problems(iteration_index, search_problems)
             if not search_problems:
-                state.solution_state().move_weakly_nondominated_to_nondominated()
+                state.solution_state().move_weakly_nondominated_to_nondominated(
+                    constant_value_index=self._primary_objective_index)
                 break
             # select the next efficient integer vector
             selected_search_problem_and_index = self._select_search_problem_and_index(search_problems)

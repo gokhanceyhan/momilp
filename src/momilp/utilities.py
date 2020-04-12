@@ -120,6 +120,42 @@ class ConstraintGenerationUtilities:
             tabu_constraint_lhs, name, tabu_constraint_rhs, GRB.GREATER_EQUAL, tabu_constraint=True)
 
 
+class EdgeComparisonUtilities:
+
+    """Implements edge comparison utilities"""
+
+    @staticmethod
+    def extend_edge(base_edge, compared_edge, constant_value_index=0, slope_abs_tol=1e-3, value_rel_tol=1e-6):
+        """Extends the base edge with the compared edge if possible. 
+        
+        Returns True and the extended edge if the extension is feasible, otherwise False and None"""
+        if base_edge.end_point() != compared_edge.start_point():
+            return False, None
+        if not (base_edge.end_inclusive() and compared_edge.start_inclusive()):
+            return False, None
+        # the edges must be in the same two-dimensinal plane
+        values = [
+            base_edge.start_point().values()[constant_value_index], 
+            base_edge.end_point().values()[constant_value_index], 
+            compared_edge.start_point().values()[constant_value_index], 
+            compared_edge.end_point().values()[constant_value_index]]
+        if not math.isclose(min(values), max(values), rel_tol=value_rel_tol):
+            return False, None
+        dimensions = [i for i in range(len(base_edge.start_point().values())) if i != constant_value_index]
+        base_edge_2dim = TypeConversionUtilities.edge_to_edge_in_two_dimension(dimensions, base_edge)
+        compared_edge_2dim = TypeConversionUtilities.edge_to_edge_in_two_dimension(dimensions, compared_edge)
+        n_base_edge = base_edge_2dim.normal_vector()[1] / base_edge_2dim.normal_vector()[0] if \
+            base_edge_2dim.normal_vector()[0] > 0 else float("inf")
+        n_compared_edge = compared_edge_2dim.normal_vector()[1] / compared_edge_2dim.normal_vector()[0] if \
+            compared_edge_2dim.normal_vector()[0] > 0 else float("inf")
+        if not math.isclose(n_base_edge, n_compared_edge, abs_tol=slope_abs_tol):
+            return False, None
+        edge = Edge(
+            base_edge.start_point(), compared_edge.end_point(), start_inclusive=base_edge.start_inclusive(), 
+            end_inclusive=compared_edge.end_inclusive())
+        return True, edge
+
+
 class ModelQueryUtilities:
 
     """Implements model query utilities"""
