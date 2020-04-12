@@ -1,6 +1,7 @@
 """Checks the dominance of a set of points, and eliminates the dominated points"""
 
 from enum import Enum
+import math
 import numpy as np
 from gurobipy import GRB, Model, QuadExpr
 from time import time
@@ -345,7 +346,7 @@ class ModelBasedDominanceFilter:
         """Returns the elapsed time in seconds"""
         return self._elapsed_time_in_seconds
 
-    def filter_edge(self, edge):
+    def filter_edge(self, edge, tol=1e-6):
         """Filters the dominated points in the edge, and returns the updated edges"""
         self._dominance_model.remove_checked_element_constraints()
         self._dominance_model.add_edge_constraint(edge)
@@ -359,8 +360,12 @@ class ModelBasedDominanceFilter:
         z2_objective_index = 1
         point_z_2_star = self._solve_model(objective_index=z2_objective_index)
         # MOMILP_TO_DO: Check if a point of the edge is on the boundary of the dominated space
-        if point_z_1_star.values()[z1_objective_index] == edge.right_point().values()[z1_objective_index]:
-            if point_z_2_star.values()[z2_objective_index] == edge.left_point().values()[z2_objective_index]:
+        if math.isclose(
+                point_z_1_star.values()[z1_objective_index], edge.right_point().values()[z1_objective_index], 
+                rel_tol=tol):
+            if math.isclose(
+                    point_z_2_star.values()[z2_objective_index], edge.left_point().values()[z2_objective_index], 
+                    rel_tol=tol):
                 # the edge is dominated
                 return []
             else:
@@ -370,7 +375,9 @@ class ModelBasedDominanceFilter:
                 right_point = PointInTwoDimension(values_on_the_boundary)
                 return [EdgeInTwoDimension(edge.left_point(), right_point, right_inclusive=False, z3=edge.z3())]
         else:
-            if point_z_2_star.values()[z2_objective_index] == edge.left_point().values()[z2_objective_index]:
+            if math.isclose(
+                    point_z_2_star.values()[z2_objective_index], edge.left_point().values()[z2_objective_index], 
+                    rel_tol=tol):
                 values_on_the_boundary = [
                     point_z_1_star.values()[z1_objective_index], point_z_1_star.values()[z2_objective_index]]
                 left_point = PointInTwoDimension(values_on_the_boundary)

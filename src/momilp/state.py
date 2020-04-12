@@ -1,8 +1,10 @@
 """Implements state of the algorithm and its elements"""
 
-from src.common.elements import EdgeSolution, FrontierInTwoDimension
+import math
+
+from src.common.elements import Edge, EdgeSolution, FrontierInTwoDimension
 from src.momilp.dominance import DominanceRules
-from src.momilp.utilities import TypeConversionUtilities
+from src.momilp.utilities import EdgeComparisonUtilities, TypeConversionUtilities
 
 
 class Iteration:
@@ -85,9 +87,26 @@ class SolutionState:
         """Adds the point solution to the nondominated points"""
         self._nondominated_points.append(point_solution)
 
-    def add_weakly_nondominated_edge(self, edge_solution):
+    def add_weakly_nondominated_edge(
+            self, edge_solution, check_continuity=True, constant_value_index=0, to_right=False):
         """Adds the edge solution to the weakly nondominated edges"""
-        self._weakly_nondominated_edges.append(edge_solution)
+        if not check_continuity or not self._weakly_nondominated_edges:
+            self._weakly_nondominated_edges.append(edge_solution)
+            return
+        previous_edge_solution = self._weakly_nondominated_edges[-1]
+        # the edge solution must have the same integer solution vector
+        if previous_edge_solution.y_bar() != edge_solution.y_bar():
+            self._weakly_nondominated_edges.append(edge_solution)
+            return
+        base_edge, compared_edge = (previous_edge_solution.edge(), edge_solution.edge()) if to_right else \
+            (edge_solution.edge(), previous_edge_solution.edge())
+        extended, extended_edge = EdgeComparisonUtilities.extend_edge(base_edge, compared_edge, 
+            constant_value_index=constant_value_index)
+        if not extended:
+            self._weakly_nondominated_edges.append(edge_solution)
+            return
+        edge_solution_ = EdgeSolution(extended_edge, previous_edge_solution.y_bar())
+        self._weakly_nondominated_edges[-1] = edge_solution_
 
     def efficient_integer_vectors(self):
         """Returns the efficient integer vectors"""
@@ -126,7 +145,8 @@ class SolutionState:
                     unprojected_dim_2_value, e, projected_space_criterion_index_2_criterion_index)  for e in 
                 filtered_edges_in_two_dimension]
             nondominated_edges = [EdgeSolution(edge, edge_solution.y_bar()) for edge in filtered_edges]
-            filtered_weakly_nondominated_edges.extend(nondominated_edges)
+            # add the generated edges in reverse order to maintain the order from right-to-left in x_obj values
+            filtered_weakly_nondominated_edges.extend(nondominated_edges[::-1])
         self._weakly_nondominated_edges = filtered_weakly_nondominated_edges
 
     def filter_weakly_nondominated_edges(self, criterion_index=0, criterion_value=0):
@@ -160,10 +180,34 @@ class SolutionState:
         self._nondominated_points.extend(nondominated_point_solutions)
         tuples = [tuple(e) for e in efficient_integer_vectors]
         self._efficient_integer_vectors.update(tuples)
-        
-    def move_weakly_nondominated_to_nondominated(self):
+
+    def move_weakly_nondominated_edges_to_nondominated_edges(
+            self, check_continuity=True, constant_value_index=0, to_right=False):
+        """Moves the weakly nondominated edges to the set of nondominated edges"""
+        if not check_continuity or not self._nondominated_edges:
+            self._nondominated_edges.extend(self._weakly_nondominated_edges)
+            return
+        previous_edge_solution = self._nondominated_edges[-1]
+        edge_solution = self._weakly_nondominated_edges[0]
+        # the edge solution must have the same integer solution vector
+        if previous_edge_solution.y_bar() != edge_solution.y_bar():
+            self._nondominated_edges.extend(self._weakly_nondominated_edges)
+            return
+        base_edge, compared_edge = (previous_edge_solution.edge(), edge_solution.edge()) if to_right else \
+            (edge_solution.edge(), previous_edge_solution.edge())
+        extended, extended_edge = EdgeComparisonUtilities.extend_edge(base_edge, compared_edge, 
+            constant_value_index=constant_value_index)
+        if not extended:
+            self._nondominated_edges.extend(self._weakly_nondominated_edges)
+            return
+        edge_solution_ = EdgeSolution(extended_edge, previous_edge_solution.y_bar())
+        self._nondominated_edges[-1] = edge_solution_
+        if len(self._weakly_nondominated_edges) > 1:
+            self._nondominated_edges.extend(self._weakly_nondominated_edges[1:])
+
+    def move_weakly_nondominated_to_nondominated(self, constant_value_index=0):
         """Moves all of the weakly nondominated points or edges to nondominated points or edges"""
-        self._nondominated_edges.extend(self._weakly_nondominated_edges)
+        self.move_weakly_nondominated_edges_to_nondominated_edges(constant_value_index=constant_value_index)
         efficient_integer_vectors_of_edge_solutions = [e.y_bar() for e in self._weakly_nondominated_edges]
         self._weakly_nondominated_edges = []
         self._nondominated_points.extend(self._weakly_nondominated_points)
