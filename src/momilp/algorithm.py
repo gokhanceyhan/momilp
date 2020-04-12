@@ -386,6 +386,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             needs_update = lb[update_bound_index] < reference_point_value + delta
             if not needs_update:
                 continue
+            print("index %d needs update" % index)
             shifted_values = [
                 (v + delta if i == update_criterion_index else v) for i, v in enumerate(reference_point.values())]
             shifted_reference_point = Point(shifted_values)
@@ -505,7 +506,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             # update the state
             self._update_state(selected_point_solution, frontier, iteration_index)
             # partition the selected region and create the new search problems
-            child_search_problems = self._partition_search_problem(frontier, selected_search_problem)
+            child_search_problems = self._partition_search_problem(
+                frontier, selected_search_problem, lower_bound_delta=lower_bound_delta)
             search_space.delete_search_problem(selected_search_problem_index)
             for p in child_search_problems:
                 search_space.add_search_problem(p)
