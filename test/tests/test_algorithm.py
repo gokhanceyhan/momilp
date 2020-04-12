@@ -34,7 +34,7 @@ class ConeBasedSearchAlgorithmTest(TestCase):
         print(nondominated_points_df)
         print(nondominated_edges_df)
         num_points, _ = nondominated_points_df.shape
-        self.assert_that(num_points, is_(7))
+        self.assert_that(num_points, is_(6))
         self.assert_that(nondominated_edges_df.empty)
 
     def test_three_obj_blp_ex1_problem(self):
