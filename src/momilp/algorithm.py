@@ -386,7 +386,6 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             needs_update = lb[update_bound_index] < reference_point_value + delta
             if not needs_update:
                 continue
-            print("index %d needs update" % index)
             shifted_values = [
                 (v + delta if i == update_criterion_index else v) for i, v in enumerate(reference_point.values())]
             shifted_reference_point = Point(shifted_values)
