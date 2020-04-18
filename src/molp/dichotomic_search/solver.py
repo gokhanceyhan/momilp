@@ -28,9 +28,10 @@ class BolpDichotomicSearchWithGurobiSolver(MolpSolver):
 
     def _calculate_objective_weights(self, point_with_higher_z1_value, point_with_higher_z2_value):
         """Calculates the objective weights to search a nondominated point between the given two points"""
-        return {
-            0: point_with_higher_z2_value.z2() - point_with_higher_z1_value.z2(),
-            1: point_with_higher_z1_value.z1() - point_with_higher_z2_value.z1()}
+        w_0 = point_with_higher_z2_value.z2() - point_with_higher_z1_value.z2()
+        w_1 = point_with_higher_z1_value.z1() - point_with_higher_z2_value.z1()
+        w = w_0 + w_1
+        return {0: w_0 / w, 1: w_1 / w}
         
     def _initialize(self):
         """Initializes the solver"""
@@ -103,7 +104,7 @@ class BolpDichotomicSearchWithGurobiSolver(MolpSolver):
         """Returns the extreme supported nondominated points"""
         return self._extreme_supported_nondominated_points
     
-    def solve(self):
+    def solve(self, rel_tol=1e-6):
         model = self._model
         point_pairs_two_check = self._point_pairs_to_check
         while len(point_pairs_two_check) > 0:
@@ -117,6 +118,15 @@ class BolpDichotomicSearchWithGurobiSolver(MolpSolver):
             values, _ = ModelQueryUtilities.query_optimal_objective_values(model)
             point = PointInTwoDimension(values)
             if self._isclose(point, point_with_higher_z1_value) or self._isclose(point, point_with_higher_z2_value):
+                continue
+            left_extreme_point_obj_value = point_with_higher_z2_value.values()[0] * obj_index_2_weight[0] + \
+                point_with_higher_z2_value.values()[1] * obj_index_2_weight[1]
+            right_extreme_point_obj_value = point_with_higher_z1_value.values()[0] * obj_index_2_weight[0] + \
+                point_with_higher_z1_value.values()[1] * obj_index_2_weight[1]
+            assert math.isclose(
+                left_extreme_point_obj_value, right_extreme_point_obj_value, rel_tol=rel_tol), "this should not happen"
+            point_obj_value = point.values()[0] * obj_index_2_weight[0] + point.values()[1] * obj_index_2_weight[1]
+            if math.isclose(point_obj_value, left_extreme_point_obj_value, rel_tol=rel_tol):
                 continue
             self._extreme_supported_nondominated_points.append(point)
             point_pairs_two_check.append(

@@ -184,6 +184,8 @@ class SolutionState:
     def move_weakly_nondominated_edges_to_nondominated_edges(
             self, check_continuity=True, constant_value_index=0, to_right=False):
         """Moves the weakly nondominated edges to the set of nondominated edges"""
+        if not self._weakly_nondominated_edges:
+            return
         if not check_continuity or not self._nondominated_edges:
             self._nondominated_edges.extend(self._weakly_nondominated_edges)
             return
