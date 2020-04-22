@@ -21,7 +21,18 @@ Referenced articles:
   pages={597--618},
   year={2015},
   publisher={INFORMS}
-}"""
+}
+@article{kirlik2014new,
+  title={A new algorithm for generating all nondominated solutions of multiobjective discrete optimization problems},
+  author={Kirlik, Gokhan and Say{\i}n, Serpil},
+  journal={European Journal of Operational Research},
+  volume={232},
+  number={3},
+  pages={479--488},
+  year={2014},
+  publisher={Elsevier}
+}
+"""
 
 from abc import ABCMeta, abstractmethod
 from gurobipy import GRB, LinExpr, Model
@@ -115,6 +126,78 @@ class MomilpInstanceData:
         NOTE: A series of length m"""
         return self._rhs
 
+
+class KnapsackFileInstanceData(MomilpInstanceData):
+
+    """Implements a Knapsack problem instance data retrived from a file
+    
+    NOTE: Based on the data input schema defined in Kirlik and Sayin. (2014):
+    http://home.ku.edu.tr/~moolibrary/
+     
+    A '.dat' file describing a multi-objective 0-1 knapsack problem
+    Line 1: Number of objective functions, p
+    Line 2: Number of objects, n
+    Line 3: Capacity of the knapsack, W
+    Line 5: Profits of the objects in each objective function, V
+    Line 6: Weights of the objects, w
+    """
+
+    _ESCAPED_CHARACTERS = ["[", "]"]
+    _LINE_DELIMITER = ", "
+    _NEW_LINE_SEPARATOR = "\n"
+
+    def __init__(self, file_name, param_2_value):
+        super(KnapsackFileInstanceData, self).__init__(param_2_value)
+        self._file_name = file_name
+        self._create()
+
+    def _create(self):
+        """Creates the instance data"""
+        lines = []
+        with open(self._file_name, "r") as f:
+            lines = f.readlines()
+        # read the number of objectives
+        num_objectives = int(self._process_lines(lines).iloc[0,0])
+        assert num_objectives == self._param_2_value["num_objs"], \
+            "the number of objectives in the data file is not equal to the configuration parameter value, " \
+            "'%d' != '%d'" % (num_objectives, self._param_2_value["num_objs"])
+        # read the number of objects
+        num_continuous_vars = self._param_2_value["num_continuous_vars"]
+        assert num_continuous_vars == 0, "there should not be any continuous variables"
+        num_binary_vars = self._param_2_value["num_binary_vars"]
+        num_objects = int(self._process_lines(lines).iloc[0,0])
+        assert num_objects == num_binary_vars, \
+            "the number of objects in the data file is not equal to the number of binary variables in the " \
+            "configuration, '%d' != '%d'" % (num_objects, num_continuous_vars + num_binary_vars)
+        # read the knapsack capacities
+        self._rhs = self._process_lines(lines).iloc[0, :]
+        num_constraints = len(self._rhs)
+        assert num_constraints == self._param_2_value["num_constraints"], \
+            "the number of constraints in the data file is not equal to the configuration parameter value, " \
+            "'%d' != '%d'" % (num_constraints, self._param_2_value["num_constraints"])
+        # read the objective function coefficients
+        self._continuous_var_obj_coeff_df = pd.DataFrame()
+        self._integer_var_obj_coeff_df = self._process_lines(lines, to_index=num_objectives).T
+        # read the constraint coefficients
+        self._constraint_coeff_df = self._process_lines(lines, to_index=num_constraints)
+
+    def _process_lines(self, lines, from_index=0, to_index=1):
+        """Processes the lines between the indices, removes the processed lines, and returns the data frame for the 
+        processed data"""
+        rows = []
+        for line in lines[from_index:to_index]:
+            for char in KnapsackFileInstanceData._ESCAPED_CHARACTERS:
+                line = line.replace(char, "")        
+            line = line.split(KnapsackFileInstanceData._NEW_LINE_SEPARATOR)[0]
+            values = line.split(KnapsackFileInstanceData._LINE_DELIMITER)
+            if values[-1][-1] == ",":
+                values[-1] = values[-1][:-1]
+            if not values[-1]:
+                values = values[:-1]
+            rows.append(values)
+        del lines[from_index:to_index]
+        df = pd.DataFrame(rows, dtype='float')
+        return df
 
 class MomilpFileInstanceData(MomilpInstanceData):
 
