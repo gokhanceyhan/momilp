@@ -318,6 +318,19 @@ class DominanceRules:
             return this != that and all([v <= that.values()[i] for i, v in enumerate(this.values())])
 
 
+    class PointToPointSet:
+
+        """Implements the rules when comparing a point to a set of points"""
+
+        @staticmethod
+        def dominated(this_point, other_points):
+            """Returns True if 'this_point' is dominated by 'other_points', otherwise False"""
+            for point in other_points:
+                if DominanceRules.PointToPoint.dominated(this_point, point):
+                    return True
+            return False
+
+
 class ModelBasedDominanceFilter:
 
     """Filters the points that are relatively nondominated with respect to the points or edges checked against"""

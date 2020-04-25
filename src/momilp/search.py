@@ -12,6 +12,7 @@ from src.common.elements import ConvexConeInPositiveQuadrant, EdgeInTwoDimension
     LowerBoundInTwoDimension, OptimizationStatus, Point, PointInTwoDimension, SearchRegionInTwoDimension, \
     SearchProblemResult, SliceProblemResult
 from src.molp.dichotomic_search.solver import BolpDichotomicSearchWithGurobiSolver
+from src.momilp.dominance import DominanceRules
 from src.momilp.utilities import ConstraintGenerationUtilities, ModelQueryUtilities, PointComparisonUtilities, \
     SearchUtilities
 
@@ -128,9 +129,18 @@ class SearchProblem(Problem):
         """Returns the candidate results"""
         return self._candidate_results
 
+    def clear_candidate_result(self, index=0):
+        """Removes the candidate result at the specified index"""    
+        del self._candidate_results[index]
+
     def clear_result(self):
         """Clears the result"""
         self._result = None
+
+    def is_feasible(self):
+        """Returns True if the problem is feasible, False othwerwise"""
+        return self._result.status() in [OptimizationStatus.OPTIMAL, OptimizationStatus.FEASIBLE] if self._result else \
+            False
 
     def next_candidate_result(self):
         """Returns the next candidate result"""
@@ -160,13 +170,35 @@ class SearchProblem(Problem):
         if solve_relaxed_problem:
             self._solved_milp = False
             self._solve_relaxed_problem()
+        result = None
         if self._relaxed_problem_result.status() == OptimizationStatus.INFEASIBLE:
             point_solution = None
-            self._result = SearchProblemResult(point_solution, OptimizationStatus.INFEASIBLE)
+            result = SearchProblemResult(point_solution, OptimizationStatus.INFEASIBLE)
+        else:
+            momilp_model.solve()
+            self._solved_milp = True
+            result = ModelQueryUtilities.query_optimal_solution(momilp_model.problem(), momilp_model.y())
+        candidate_result = self.next_candidate_result()
+        if not candidate_result:
+            self._result = result
             return self._result
-        momilp_model.solve()
-        self._solved_milp = True
-        self._result = ModelQueryUtilities.query_optimal_solution(momilp_model.problem(), momilp_model.y())
+        if result.status() not in [OptimizationStatus.FEASIBLE, OptimizationStatus.OPTIMAL]:
+            self._result = candidate_result
+            self.clear_candidate_result()
+            return self._result
+        value_index_2_priority = momilp_model.objective_index_2_priority()
+        assert result.point_solution() and candidate_result.point_solution(), "this should not happen"
+        if PointComparisonUtilities.compare_to(
+                result.point_solution().point(), candidate_result.point_solution().point(), 
+                value_index_2_priority) >= 0:
+            self._result = result
+        else:
+            self._result = candidate_result
+            self.clear_candidate_result()
+            # add the result to the candidate results and update the tabu y-bars
+            self._tabu_y_bars.append(result.point_solution().y_bar())
+            self._candidate_results = SearchUtilities.sort_search_problem_results(
+                self._candidate_results + [result], value_index_2_priority)
         return self._result
 
     def solved_milp(self):
@@ -212,25 +244,6 @@ class SearchSpace:
         # NOTE: Search problem are always sorted based on the value of projected space criterion at index 0
         self._search_problems = []
 
-    def _collect_and_sort_results_for_coupling(self, search_problems, value_index_2_priority):
-        """Collects the available results in the search problems, sorts them and returns the sorted list"""
-        value_index_and_priorities = [(i, p) for i, p in value_index_2_priority.items()]
-        value_index_and_priorities = sorted(value_index_and_priorities, key=lambda t: t[1], reverse=True)
-        prioritized_value_indices = [i for i, _ in value_index_and_priorities]
-        results = []
-        for p in search_problems:
-            if not p.result():
-                continue
-            results.append(p.result())
-            results.extend(p.candidate_results())
-
-        def sorter(r):
-            """Returns the tuple of criterion values in decreasing order of priority for the point of the result"""
-            criterion_values = [r.point_solution().point().values()[i] for i in prioritized_value_indices]
-            return tuple(criterion_values)
-            
-        return sorted(results, key=sorter, reverse=True)
-
     def _couple_two_search_problem(self, left_search_problem, right_search_problem):
         """Couples two neighbor search problems, and returns the coupled search problem. If the problems cannot be 
         coupled, returns None"""
@@ -272,22 +285,39 @@ class SearchSpace:
             left_region.x_obj_name(), left_region.y_obj_name(), coupled_cone, edge=coupled_edge, 
             lower_bound=coupled_bound)
         p = SearchProblem(momilp_model)
+        results = []
         # couple the tabu integer vectors
         tabu_y_bars = [tuple(y_bar) for y_bar in left_search_problem.tabu_y_bars() + right_search_problem.tabu_y_bars()]
         if left_search_problem.result():
             tabu_y_bars.append(tuple(left_search_problem.result().point_solution().y_bar()))
+            if left_search_problem.is_feasible():
+                results.append(left_search_problem.result())
         if right_search_problem.result():
             tabu_y_bars.append(tuple(right_search_problem.result().point_solution().y_bar()))
+            if right_search_problem.is_feasible():
+                results.append(right_search_problem.result())
+        results.extend(left_search_problem.candidate_results() + right_search_problem.candidate_results())
         tabu_y_bars = [list(y_bar) for y_bar in set(tabu_y_bars)]
         p.update_problem(region=coupled_region, tabu_y_bars=tabu_y_bars)
         # collect all the results in the coupled regions and select the best one
         value_index_2_priority = momilp_model.objective_index_2_priority()
-        results = self._collect_and_sort_results_for_coupling(
-            [left_search_problem, right_search_problem], value_index_2_priority)
+        results = SearchUtilities.sort_search_problem_results(results, value_index_2_priority)
         best_result = results[0] if results else None
         candidate_results = results[1:] if results else []
-        p.update_result(best_result)
-        for c in candidate_results:
+        # eliminate candidate results that are dominated
+        relatively_nd_candidate_results = []
+        for candidate_result in candidate_results:
+            point = candidate_result.point_solution().point()
+            if DominanceRules.PointToPoint.dominated(point, best_result.point_solution().point()):
+                continue
+            relatively_nd_candidate_results.append(candidate_result)
+        # set the best result only if both search problems have a result. Otherwise, it is possible that a better 
+        # result can be found in the region with no result.
+        if left_search_problem.result() and right_search_problem.result():
+            p.update_result(best_result)
+        elif best_result:
+            p.add_candidate_result(best_result)
+        for c in relatively_nd_candidate_results:
             p.add_candidate_result(c)
         return p
 
