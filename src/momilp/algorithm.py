@@ -398,10 +398,13 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             search_problem.update_region(region)
             if DominanceRules.PointToPoint.dominated(point_solution.point(), shifted_reference_point):
                 search_problem.clear_result()
-            for candidate_index, candidate_result in enumerate(search_problem.candidate_results()):
+            filtered_candidate_results = []
+            for candidate_result in search_problem.candidate_results():
                 point = candidate_result.point_solution().point()
                 if DominanceRules.PointToPoint.dominated(point, shifted_reference_point):
-                    search_problem.clear_candidate_result(index=candidate_index)
+                    continue
+                filtered_candidate_results.append(candidate_result)
+            search_problem.set_candidate_results(filtered_candidate_results)
 
     def _update_search_problem_region_lower_bound(self, bound_index, bound_value, search_problem_index, delta=0.0):
         """Updates the lower bound of the region associated with the search problem at the specified index"""

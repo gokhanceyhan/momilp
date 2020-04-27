@@ -160,6 +160,10 @@ class SearchProblem(Problem):
     def result(self):
         return self._result
 
+    def set_candidate_results(self, candidate_results):
+        """Sets the candidate results"""
+        self._candidate_results = candidate_results
+
     def solve(self, solve_relaxed_problem=True):
         # the model has to be reset since the same model is copied over many search regions
         self._reset_model()
