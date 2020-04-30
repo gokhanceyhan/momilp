@@ -366,8 +366,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             result = slice_problem.solve()
         except BaseException as e:
             raise RuntimeError(
-                "failed to solve the slice problem for integer vector '%s' in iteration '%s'" % (
-                    selected_point_solution.y_bar(), iteration_index)) from e
+                "failed to solve the slice problem for point solution '%s' in region '%s' at iteration '%s'" % (
+                    selected_point_solution, region, iteration_index)) from e
         else:
             end = time()
             self._elapsed_time_in_seconds_for_slice_problem = end - start
