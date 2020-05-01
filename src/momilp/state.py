@@ -34,12 +34,22 @@ class IterationStatistics:
     """Implements iteration statistics"""
 
     def __init__(
-            self, elapsed_time_in_seconds=0, elapsed_time_in_seconds_for_search_problem=0, 
-            elapsed_time_in_seconds_for_slice_problem=0, num_milp_solved=0):
+            self, average_num_tabu_constraints=0, elapsed_time_in_seconds=0, 
+            elapsed_time_in_seconds_for_search_problem=0, elapsed_time_in_seconds_for_slice_problem=0, 
+            num_milp_solved=0, num_search_problems=0):
+        self._average_num_tabu_constraints = average_num_tabu_constraints
         self._elapsed_time_in_seconds = elapsed_time_in_seconds
         self._elapsed_time_in_seconds_for_search_problem = elapsed_time_in_seconds_for_search_problem
         self._elapsed_time_in_seconds_for_slice_problem = elapsed_time_in_seconds_for_slice_problem
         self._num_milp_solved = num_milp_solved
+        self._num_search_problems = num_search_problems
+
+    def __str__(self):
+        return str(self.to_dict())
+
+    def average_num_tabu_constraints(self):
+        """Returns the average number of tabu-constraints in the search problems of the iteration"""
+        return self._average_num_tabu_constraints
 
     def elapsed_time_in_seconds(self):
         """Returns the elapsed time in seconds"""
@@ -56,6 +66,14 @@ class IterationStatistics:
     def num_milp_solved(self):
         """Returns the number of milp models solved in the iteration"""
         return self._num_milp_solved
+
+    def num_search_problems(self):
+        """Returns the number of search problems in the iteration"""
+        return self._num_search_problems
+
+    def to_dict(self):
+        """Returns the dictionary representation of the iteration statistics"""
+        return {k[1:]: round(v, 2) for k, v in self.__dict__.items()}
 
 
 class SolutionState:

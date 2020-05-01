@@ -118,9 +118,12 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         num_milp_solved = self._num_milp_solved
         elapsed_time_in_seconds_for_search_problem = self._elapsed_time_in_seconds_for_search_problem
         elapsed_time_in_seconds_for_slice_problem = self._elapsed_time_in_seconds_for_slice_problem
+        num_search_problems = len(state.search_space().search_problems())
+        avg_num_tabu_constraints = sum(sp.num_tabu_constraints() for sp in state.search_space().search_problems()) / \
+            num_search_problems if num_search_problems else 0.0
         statistics = IterationStatistics(
-            iteration_time_in_seconds, elapsed_time_in_seconds_for_search_problem, 
-            elapsed_time_in_seconds_for_slice_problem, num_milp_solved)
+            avg_num_tabu_constraints, iteration_time_in_seconds, elapsed_time_in_seconds_for_search_problem, 
+            elapsed_time_in_seconds_for_slice_problem, num_milp_solved, num_search_problems)
         iteration = Iteration(iteration_index, selected_point_solution, statistics)
         state.iterations().append(iteration)
         # reset the statistics of the algorithm instance

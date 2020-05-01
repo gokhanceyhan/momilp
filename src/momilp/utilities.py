@@ -223,10 +223,12 @@ class ReportCreator:
 
     _CONNECTED_POINT_INDICATOR_COLUMN_NAME = "connected"
     _FILE_NAME_TEMPLATE = "{instance_name}_{report_name}.csv"
+    _ITERATION_STATISTICS_REPORT_NAME = "stats"
     _NONDOMINATED_SET_REPORT_NAME = "nds"
 
     def __init__(self, momilp_model, state, instance_name, output_dir):
         self._instance_name = instance_name
+        self._iteration_statistics_df = None
         self._momilp_model = momilp_model
         self._nondominated_edges_df = None
         self._nondominated_points_df = None
@@ -239,6 +241,11 @@ class ReportCreator:
         return [
             self._momilp_model.objective_scaler(name, inverse=True)(values[index]) for index, name 
             in objective_index_2_name.items()]
+
+    def _set_iteration_statistics_df(self):
+        """Sets the data frame of the iteration statistics"""
+        records = [iteration.statistics().to_dict() for iteration in self._state.iterations()]
+        self._iteration_statistics_df = pd.DataFrame.from_records(records) if records else pd.DataFrame()
 
     def _set_nondominated_edges_df(self):
         """Sets the data frame of the nondominated edges"""
@@ -331,11 +338,15 @@ class ReportCreator:
         nondominated_set_df = self._nondominated_points_df.append(self._nondominated_edges_df, sort=False)
         report_name = ReportCreator._NONDOMINATED_SET_REPORT_NAME
         self._to_csv(nondominated_set_df, report_name)
+        iteration_statistics_df = self._iteration_statistics_df
+        report_name = ReportCreator._ITERATION_STATISTICS_REPORT_NAME
+        self._to_csv(iteration_statistics_df, report_name)
 
     def create_data_frames(self):
         """Creates the data frames of the report"""
         self._set_nondominated_edges_df()
         self._set_nondominated_points_df()
+        self._set_iteration_statistics_df()
 
     def nondominated_edges_df(self):
         """Returns the nondominated edges data frame"""
