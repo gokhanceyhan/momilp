@@ -609,11 +609,13 @@ class SearchUtilities:
             regions.append(left_most_region)
         # add the corresponding region for each edge in the frontier
         for edge in frontier.edges():
-            left_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, edge.left_point())
-            right_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, edge.right_point())
+            # adjust the edge if the lower bound delta is positive
+            edge_ = SearchUtilities.shift_edge_in_two_dimension(edge, abs_delta=lower_bound_delta)
+            left_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, edge_.left_point())
+            right_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, edge_.right_point())
             cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
             region_ = SearchUtilities.create_search_region_in_two_dimension(
-                x_obj_name, y_obj_name, cone, edge=edge, 
+                x_obj_name, y_obj_name, cone, edge=edge_, 
                 lower_bound=LowerBoundInTwoDimension([initial_lb[0], initial_lb[1]]))
             regions.append(region_)
         # add a region for the right-most region
@@ -632,6 +634,21 @@ class SearchUtilities:
                 lower_bound=LowerBoundInTwoDimension([right_most_point.z1() + lower_bound_delta, initial_lb[1]]))
             regions.append(right_most_region)
         return regions
+
+    @staticmethod
+    def shift_edge_in_two_dimension(edge, abs_delta=None, relative_delta=None):
+        """Shifts the edge in two dimension by the given delta
+        
+        Given delta value is assumed to be on the x-axis objective"""
+        delta = edge.left_point().values()[0] * relative_delta if relative_delta else abs_delta if abs_delta else 0.0
+        left_point_x = edge.left_point().values()[0] + delta
+        left_point_y = left_point_x * edge.left_point().values()[1] / edge.left_point().values()[0]
+        left_point = PointInTwoDimension([left_point_x, left_point_y])
+        right_point_x = edge.right_point().values()[0] + delta
+        right_point_y = right_point_x * edge.right_point().values()[1] / edge.right_point().values()[0]
+        right_point = PointInTwoDimension([right_point_x, right_point_y])
+        return EdgeInTwoDimension(
+            left_point, right_point, left_inclusive=edge.left_inclusive(), right_inclusive=edge.right_inclusive())
 
     @staticmethod
     def sort_search_problem_results(search_problem_results, value_index_2_priority):
