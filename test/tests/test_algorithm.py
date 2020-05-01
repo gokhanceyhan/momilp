@@ -1,7 +1,7 @@
 """Implements tests for momilp solver algorithm"""
 
 from gurobipy import read
-from hamcrest import assert_that, is_
+from hamcrest import assert_that, empty, has_length, is_
 import os
 from src.momilp.algorithm import AlgorithmFactory, AlgorithmType
 from src.momilp.executor import Executor
@@ -34,8 +34,28 @@ class ConeBasedSearchAlgorithmTest(TestCase):
         print(nondominated_points_df)
         print(nondominated_edges_df)
         num_points, _ = nondominated_points_df.shape
-        self.assert_that(num_points, is_(6))
+        self.assert_that(num_points, is_(7))
         self.assert_that(nondominated_edges_df.empty)
+
+    def test_three_obj_binary_linear_programming_problem_with_exploring_decision_space(self):
+        """Tests the algorithm on a three-objective binary linear program with exploring the decision space"""
+        model_file = os.path.join(self._test_data_dir, "three_obj_blp.lp")
+        algorithm = AlgorithmFactory.create(
+            model_file, self._logs_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, 
+            discrete_objective_indices=[0, 1, 2], explore_decision_space=True, max_num_iterations=50)
+        state = algorithm.run()
+        solution_state = state.solution_state()
+        report_creator = ReportCreator(algorithm.momilp_model(), state, self._instance_name, self._logs_dir)
+        report_creator.create_data_frames()
+        nondominated_points_df = report_creator.nondominated_points_df()
+        nondominated_edges_df = report_creator.nondominated_edges_df()
+        print(nondominated_points_df)
+        print(nondominated_edges_df)
+        self.assert_that(solution_state.nondominated_points(), has_length(6))
+        self.assert_that(solution_state.nondominated_edges(), empty())
+        distinct_points = set([nd_point.point() for nd_point in solution_state.nondominated_points()])
+        self.assert_that(list(distinct_points), has_length(2))
+        self.assert_that(solution_state.efficient_integer_vectors(), has_length(6))
 
     def test_three_obj_blp_ex1_problem(self):
         """Tests the algorithm on a small 3-obj blp
@@ -117,7 +137,7 @@ class ConeBasedSearchAlgorithmTest(TestCase):
         num_edges = len(state.solution_state().nondominated_edges())
         # MOMILP_TO_DO: MOMILP-8: Generation of weakly nondominated but dominated points or edges
         self.assert_that(num_edges, is_(5))
-        self.assert_that(num_points, is_(2))
+        self.assert_that(num_points, is_(1))
 
     def test_three_obj_linear_programming_problem(self):
         """Tests the algorithm on a three-objective linear program"""

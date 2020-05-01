@@ -53,16 +53,17 @@ class AlgorithmFactory:
 
     @staticmethod
     def _create_cone_based_search_algorithm(
-            model_file, working_dir, discrete_objective_indices=None, explore_decision_space=False):
+            model_file, working_dir, discrete_objective_indices=None, explore_decision_space=False, 
+            max_num_iterations=None):
         """Creates and returns the cone-based search algorithm"""
         return ConeBasedSearchAlgorithm(
             model_file, working_dir, discrete_objective_indices=discrete_objective_indices, 
-            explore_decision_space=explore_decision_space)
+            explore_decision_space=explore_decision_space, max_num_iterations=max_num_iterations)
 
     @staticmethod
     def create(
             model_file, working_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, discrete_objective_indices=None, 
-            explore_decision_space=False):
+            explore_decision_space=False, max_num_iterations=None):
         """Creates an algorithm"""
         model = read(model_file)
         num_obj = model.num_obj
@@ -79,7 +80,7 @@ class AlgorithmFactory:
         if algorithm_type == AlgorithmType.CONE_BASED_SEARCH:
             return AlgorithmFactory._create_cone_based_search_algorithm(
                 model_file, working_dir, discrete_objective_indices=discrete_objective_indices, 
-                explore_decision_space=explore_decision_space)
+                explore_decision_space=explore_decision_space, max_num_iterations=max_num_iterations)
 
 
 class ConeBasedSearchAlgorithm(AbstractAlgorithm):
@@ -89,13 +90,16 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
     _LOWER_BOUND_DELTA = 1e-4
     _STARTING_ITERATION_INDEX = 0
 
-    def __init__(self, model_file, working_dir, discrete_objective_indices=None, explore_decision_space=False):
+    def __init__(
+            self, model_file, working_dir, discrete_objective_indices=None, explore_decision_space=False, 
+            max_num_iterations=None):
         self._discrete_objective_indices = discrete_objective_indices or []
         self._dominance_filter = None
         self._elapsed_time_in_seconds_for_search_problem = 0
         self._elapsed_time_in_seconds_for_slice_problem = 0
         self._errors = []
         self._explore_decision_space = explore_decision_space
+        self._max_num_iterations = max_num_iterations
         self._model_file = model_file
         self._momilp_model = None
         self._num_milp_solved = 0
@@ -208,11 +212,6 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         self._state = State(search_space, slice_problem, solution_state=solution_state)
         # create the dominance filter that will be used to filter the dominated points of weakly nondominated sets
         self._dominance_filter = ModelBasedDominanceFilter(momilp_model.num_obj() - 1)
-    
-    @staticmethod
-    def _is_problem_feasible(problem):
-        """Returns True if the problem is feasible, False othwerwise"""
-        return problem.result().status() in [OptimizationStatus.OPTIMAL, OptimizationStatus.FEASIBLE]
 
     @staticmethod
     def _log_iteration_status(**kwargs):
@@ -223,6 +222,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
     def _partition_search_problem(self, frontier, selected_search_problem, lower_bound_delta=0.0, tol=1e-6):
         """Partitions the search problem and returns the new search problems"""
         # add the integer vector to the list of tabu integer vectors
+        projected_space_criterion_indices = self._projected_space_criterion_index_2_criterion_index.values()
         selected_region = selected_search_problem.region()
         selected_point_solution = selected_search_problem.result().point_solution()
         y_bar = selected_point_solution.y_bar()
@@ -240,10 +240,9 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             pseudo_search_problem = SearchProblem(selected_search_problem.momilp_model())
             pseudo_search_problem.update_problem(region=pseudo_search_region, tabu_y_bars=tabu_y_bars)
             self._solve_search_problem(pseudo_search_problem)
-            if ConeBasedSearchAlgorithm._is_problem_feasible(pseudo_search_problem):
+            if pseudo_search_problem.is_feasible():
                 if self._momilp_model.biobjective():
                     point = pseudo_search_problem.result().point_solution().point()
-                    projected_space_criterion_indices = self._projected_space_criterion_index_2_criterion_index.values()
                     point_in_two_dimension = TypeConversionUtilities.point_to_point_in_two_dimension(
                         projected_space_criterion_indices, point)
                     ray_of_point = SearchUtilities.create_ray_in_two_dimension(
@@ -272,15 +271,21 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         for child_index, region in enumerate(child_search_regions):
             search_problem = SearchProblem(selected_search_problem.momilp_model())
             search_problem.update_problem(region=region, tabu_y_bars=tabu_y_bars)
+            # allocate the candidate results of the selected search problem to the child search problem
+            for candidate_result in selected_search_problem.candidate_results():
+                point = candidate_result.point_solution().point()
+                point_in_two_dimension = TypeConversionUtilities.point_to_point_in_two_dimension(
+                    projected_space_criterion_indices, point)
+                if SearchUtilities.is_point_in_region_in_two_dimension(point_in_two_dimension, region):
+                    search_problem.add_candidate_result(candidate_result)
             search_problems.append(search_problem)
             if child_index != feasible_child_region_index:
                 continue
-            if not pseudo_search_problem or not ConeBasedSearchAlgorithm._is_problem_feasible(pseudo_search_problem):
+            if not pseudo_search_problem or not pseudo_search_problem.is_feasible():
                 continue
             status = pseudo_search_problem.result().status()
             point_solution = pseudo_search_problem.result().point_solution()
             point = point_solution.point()
-            projected_space_criterion_indices = self._projected_space_criterion_index_2_criterion_index.values()
             point_in_two_dimension = TypeConversionUtilities.point_to_point_in_two_dimension(
                 projected_space_criterion_indices, point)
             if DominanceRules.PointToFrontier.dominated(point_in_two_dimension, frontier):
@@ -325,7 +330,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         feasible_search_problems = []
         # solve the search problems
         for search_problem in search_problems:
-            if search_problem.result():
+            if search_problem.is_feasible():
                 feasible_search_problems.append(search_problem)
                 continue
             try:
@@ -336,7 +341,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
                         id(search_problem), str(e), iteration_index))
                 search_problem.momilp_model().write(os.path.join(self._working_dir, str(id(search_problem)) + ".lp"))
             else:
-                if not ConeBasedSearchAlgorithm._is_problem_feasible(search_problem):
+                if not search_problem.is_feasible():
                     continue
                 feasible_search_problems.append(search_problem)
         search_problems[:] = [p for p in feasible_search_problems]
@@ -365,8 +370,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             result = slice_problem.solve()
         except BaseException as e:
             raise RuntimeError(
-                "failed to solve the slice problem for integer vector '%s' in iteration '%s'" % (
-                    selected_point_solution.y_bar(), iteration_index)) from e
+                "failed to solve the slice problem for point solution '%s' in region '%s' at iteration '%s'" % (
+                    selected_point_solution, region, iteration_index)) from e
         else:
             end = time()
             self._elapsed_time_in_seconds_for_slice_problem = end - start
@@ -384,43 +389,23 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             region = search_problem.region()
             lb = region.lower_bound().bounds()
             needs_update = lb[update_bound_index] < reference_point_value + delta
-            if not needs_update:
-                continue
-            shifted_values = [
-                (v + delta if i == update_criterion_index else v) for i, v in enumerate(reference_point.values())]
-            shifted_reference_point = Point(shifted_values)
-            lb[update_bound_index] = shifted_reference_point.values()[update_criterion_index]
-            region = SearchUtilities.create_search_region_in_two_dimension(
-                region.x_obj_name(), region.y_obj_name(), region.cone(), edge=region.edge(), 
-                lower_bound=LowerBoundInTwoDimension(lb), id_=region.id())
+            if needs_update:
+                lb[update_bound_index] = reference_point_value + delta
+                region = SearchUtilities.create_search_region_in_two_dimension(
+                    region.x_obj_name(), region.y_obj_name(), region.cone(), edge=region.edge(), 
+                    lower_bound=LowerBoundInTwoDimension(lb), id_=region.id())
+                search_problem.update_region(region)
             point_solution = search_problem.result().point_solution()
-            search_problem.update_region(region)
-            if DominanceRules.PointToPoint.dominated(point_solution.point(), shifted_reference_point):
+            if point_solution.point().values()[update_criterion_index] <= lb[update_bound_index]:
                 search_problem.clear_result()
-
-    def _update_search_problem_region_lower_bound(self, bound_index, bound_value, search_problem_index, delta=0.0):
-        """Updates the lower bound of the region associated with the search problem at the specified index"""
-        assert bound_index in self._projected_space_criterion_index_2_criterion_index.keys(), \
-            "not a valid lower bound index"
-        bound_criterion_index = self._projected_space_criterion_index_2_criterion_index[bound_index]
-        search_problem = self._state.search_space().search_problems()[search_problem_index]
-        region = search_problem.region()
-        lb = region.lower_bound().bounds()
-        shifted_bound_value = bound_value + delta
-        needs_update = lb[bound_index] < shifted_bound_value
-        if not needs_update:
-            return
-        lb[bound_index] = max(lb[bound_index], shifted_bound_value)
-        region = SearchUtilities.create_search_region_in_two_dimension(
-            region.x_obj_name(), region.y_obj_name(), region.cone(), edge=region.edge(), 
-            lower_bound=LowerBoundInTwoDimension(lb), id_=region.id())
-        search_problem.update_region(region)
-        if not search_problem.result():
-            return
-        point = search_problem.result().point_solution().point()
-        criterion_value = point.values()[bound_criterion_index]
-        if criterion_value < shifted_bound_value:
-            search_problem.clear_result()
+                search_problem.update_problem(keep_previous_tabu_constraints=True, tabu_y_bars=[point_solution.y_bar()])
+            filtered_candidate_results = []
+            for candidate_result in search_problem.candidate_results():
+                point = candidate_result.point_solution().point()
+                if point.values()[update_criterion_index] <= lb[update_bound_index]:
+                    continue
+                filtered_candidate_results.append(candidate_result)
+            search_problem.set_candidate_results(filtered_candidate_results)
 
     def _update_state(self, selected_point_solution, frontier, iteration_index):
         """Updates the state"""
@@ -447,9 +432,17 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
                     self._dominance_filter, frontier, self._projected_space_criterion_index_2_criterion_index)
         # determine the status of the current frontier
         if frontier.singleton():
-            state.solution_state().add_nondominated_point(selected_point_solution)
-            state.solution_state().add_efficient_integer_vector(selected_point_solution.y_bar())
+            # we need to check if the point is a weakly nondominated, but a dominated point. This is needed when the 
+            # generated point is on the boundary of the search region
+            if not DominanceRules.PointToPointSet.dominated(
+                    selected_point_solution.point(), 
+                    [nd_point.point() for nd_point in state.solution_state().nondominated_points()]):
+                state.solution_state().add_nondominated_point(selected_point_solution)
+                state.solution_state().add_efficient_integer_vector(selected_point_solution.y_bar())
+            # MOMILP_TO_DO: MOMILP-8: we need to check against to the nondominated edge set as well
         else:
+            # MOMILP_TO_DO: MOMILP-8: we need to check against to the nondominated edge set and eliminate the dominated 
+            # ones
             edges = frontier.edges()
             # add the edges in reverse order since the generated points are sorted from right-to-left in two dimension
             for edge in edges[::-1]:
@@ -475,7 +468,9 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         search_problems = search_space.search_problems()
         lower_bound_delta = ConeBasedSearchAlgorithm._LOWER_BOUND_DELTA if not self._explore_decision_space else 0.0
         iteration_index = ConeBasedSearchAlgorithm._STARTING_ITERATION_INDEX
-        while search_problems:
+        iteration_limit = (iteration_index + self._max_num_iterations - 1) if self._max_num_iterations is not None \
+            else None 
+        while search_problems and (iteration_limit is None or iteration_index <= iteration_limit):
             iteration_start_time = time()
             # search all of the regions and remove the infeasible ones
             search_problems = self._solve_search_problems(iteration_index, search_problems)
@@ -508,8 +503,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             child_search_problems = self._partition_search_problem(
                 frontier, selected_search_problem, lower_bound_delta=lower_bound_delta)
             search_space.delete_search_problem(selected_search_problem_index)
-            for p in child_search_problems:
-                search_space.add_search_problem(p)
+            for i, p in enumerate(child_search_problems):
+                search_space.add_search_problem(p, index = selected_search_problem_index + i)
             # couple search problems
             state.search_space().couple_search_problems()
             # log the progress
@@ -518,8 +513,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             if debug_mode:
                 log = {
                     "selected region": selected_region,
-                    "frontier": frontier,
-                    "num_milp": self._num_milp_solved
+                    "solution": selected_point_solution,
+                    "frontier": frontier
                 }
                 ConeBasedSearchAlgorithm._log_iteration_status(**log)
             # create and add the iteration to the state

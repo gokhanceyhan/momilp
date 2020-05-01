@@ -3,8 +3,8 @@
 import logging
 import os
 
-from src.instance_generator.instance import GurobiMomilpInstance, MomilpFileInstanceData, MomilpRandomInstanceData, \
-    MomilpInstanceParameterSet
+from src.instance_generator.instance import GurobiMomilpInstance, KnapsackFileInstanceData, MomilpFileInstanceData, \
+    MomilpRandomInstanceData, MomilpInstanceParameterSet
 
 
 class InstanceType:
@@ -52,6 +52,25 @@ class InstanceCreator:
             instance.write(path)
 
     @staticmethod
+    def _create_knapsack_instances(output_dir, data_file_dir=None, num_instances=0, **params):
+        """Creates knapsack problem intances"""
+        assert data_file_dir, "only file-based instance generation is supported currently for the knapsack problems"
+        if data_file_dir:
+            data_files = [os.path.join(data_file_dir, f) for f in os.listdir(data_file_dir) if f.endswith(".dat")]
+            logging.info(
+                "creating '%d' instances at '%s' directory from the data files in the '%s' directory..." % (
+                    len(data_files), output_dir, data_file_dir))
+            for file in data_files:
+                instance_name = str(file).split("/")[-1].split(".")[0]
+                param_2_value = MomilpInstanceParameterSet(**params).to_dict()
+                data = KnapsackFileInstanceData(file, param_2_value)
+                instance = GurobiMomilpInstance(data, param_2_value)
+                instance_file_name = InstanceCreator._create_instance_file_name(instance_name, **param_2_value)
+                path = os.path.join(output_dir, instance_file_name)
+                instance.write(path)
+            return
+
+    @staticmethod
     def _create_instance_file_name(instance_name, **param_2_value):
         param_2_value["instance_name"] = instance_name
         return InstanceCreator._INSTANCE_NAME_FORMAT.format(**param_2_value)
@@ -59,8 +78,11 @@ class InstanceCreator:
     @staticmethod
     def create(instance_type, output_dir, data_file_dir=None, num_instances=None, **params):
         """Creates 'num_instances' many instances of the specified type in the output directory"""
-        assert instance_type == InstanceType.GENERAL_MOMILP, "currently only general momilp instances can be generated"
-        InstanceCreator._create_general_momilp_instances(
-            output_dir, data_file_dir=data_file_dir, num_instances=num_instances, **params)
-
-
+        if instance_type == InstanceType.GENERAL_MOMILP:
+            InstanceCreator._create_general_momilp_instances(
+                output_dir, data_file_dir=data_file_dir, num_instances=num_instances, **params)
+        elif instance_type == InstanceType.KNAPSACK:
+            InstanceCreator._create_knapsack_instances(
+                output_dir, data_file_dir=data_file_dir, num_instances=num_instances, **params)
+        else:
+            raise ValueError("not a valid instance type")

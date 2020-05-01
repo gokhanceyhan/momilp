@@ -143,8 +143,8 @@ class Executor:
             algorithm.dominance_filter().elapsed_time_in_seconds(), time_precision)
         # solution state statistics
         solution_state = state.solution_state()
-        num_nd_edges = len(solution_state.nondominated_edges())
-        num_nd_points = len(solution_state.nondominated_points())
+        num_nd_edges = Executor._num_nondominated_edges(solution_state)
+        num_nd_points = Executor._num_nondominated_points(solution_state)
         num_efficient_integer_vectors = len(solution_state.efficient_integer_vectors())
         statistics = ExecutionStatistics(
             algorithm_name, instance_name, elapsed_time_in_seconds=elapsed_time_in_seconds, 
@@ -160,6 +160,18 @@ class Executor:
         """Exports the statistics to the working directory as a CSV file"""
         df = pd.DataFrame.from_records([statistics_.to_dict() for statistics_ in self._statistics])
         df.to_csv(os.path.join(working_dir, Executor._EXECUTION_STATISTICS_REPORT_FILE_NAME))
+
+    @staticmethod
+    def _num_nondominated_edges(solution_state):
+        """Returns the number of nondominated edges"""
+        edges = [nd_edge.edge() for nd_edge in solution_state.nondominated_edges()]
+        return len(set(edges))
+
+    @staticmethod
+    def _num_nondominated_points(solution_state):
+        """Returns the number of nondominated points"""
+        points = [nd_point.point() for nd_point in solution_state.nondominated_points()]
+        return len(set(points))
 
     def execute(self, working_dir):
         """Executes the momilp solver"""

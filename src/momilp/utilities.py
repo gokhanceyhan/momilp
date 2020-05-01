@@ -349,7 +349,7 @@ class ReportCreator:
 class SearchUtilities:
 
     """Implements search utilities"""
-            
+
     @staticmethod
     def create_ray_in_two_dimension(from_point, to_point):
         """Returns a ray defined by the two points"""
@@ -470,6 +470,46 @@ class SearchUtilities:
         return PointInTwoDimension([x, y])
 
     @staticmethod
+    def is_point_in_region_in_two_dimension(point, region, tol=1e-6):
+        """Returns True if the point is in the region, otherwise False"""
+        ray_of_point = SearchUtilities.create_ray_in_two_dimension(PointInTwoDimension([0, 0]), point)
+        # check if the point is in the cone
+        if region.cone().left_extreme_ray().angle_in_degrees() < ray_of_point.angle_in_degrees() - tol:
+            return False
+        if ray_of_point.angle_in_degrees() < region.cone().right_extreme_ray().angle_in_degrees() - tol:
+            return False
+        # check if the point satisfies the lower bound constraints
+        lb = region.lower_bound()
+        if lb:
+            if point.values()[0] < lb.bounds()[0] - tol:
+                return False
+            if point.values()[1] < lb.bounds()[1] - tol:
+                return False
+        # check if the edge constraint is satisfied
+        edge = region.edge()
+        if edge:
+            edge_value = edge.edge_value()
+            point_value = np.dot(point.values(), edge.normal_vector())
+            if point_value < edge_value - tol:
+                return False
+        return True
+
+    @staticmethod
+    def is_point_on_edge_in_two_dimension(point, edge):
+        """Returns True of the point is on the edge, otherwise False"""
+        left_point = edge.left_point()
+        right_point = edge.right_point()
+        if point.z1() < left_point.z1() or point.z2() > left_point.z2():
+            return False
+        if point.z1() > right_point.z1() or point.z2() < right_point.z2():
+            return False
+        edge_value = edge.edge_value()
+        point_value = np.dot(point.values(), edge.normal_vector())
+        if math.isclose(edge_value, point_value, rel_tol=1e-6):
+            return True
+        return False
+
+    @staticmethod
     def partition_search_region_in_two_dimension(initial_frontier, initial_region, lower_bound_delta=0.0):
         """Partition the search region in two dimension
         
@@ -487,8 +527,15 @@ class SearchUtilities:
         regions = []
         if frontier.point():
             point = frontier.point()
-            # only update the bounds of the region if the point is on the boundary of the convex cone
-            if point_on_ray_in_two_dimension(point, region.cone().left_extreme_ray()):
+            # do not modify the region if the point is on the boundary with the dominated region
+            if region.edge() and SearchUtilities.is_point_on_edge_in_two_dimension(point, region.edge()) or \
+                    math.isclose(point.values()[0], initial_lb[0], rel_tol=1e-6) or \
+                        math.isclose(point.values()[1], initial_lb[1], rel_tol=1e-6):
+                region_ = SearchUtilities.create_search_region_in_two_dimension(
+                    x_obj_name, y_obj_name, region.cone(), edge=region.edge(), lower_bound=region.lower_bound())
+                regions.append(region_)
+            # update only the bounds of the region if the point is on the boundary of the convex cone
+            elif point_on_ray_in_two_dimension(point, region.cone().left_extreme_ray()):
                 left_extreme_ray = region.cone().left_extreme_ray()
                 right_extreme_ray = region.cone().right_extreme_ray()
                 cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
@@ -574,6 +621,21 @@ class SearchUtilities:
                 lower_bound=LowerBoundInTwoDimension([right_most_point.z1() + lower_bound_delta, initial_lb[1]]))
             regions.append(right_most_region)
         return regions
+
+    @staticmethod
+    def sort_search_problem_results(search_problem_results, value_index_2_priority):
+        """Sorts the search proble results, and returns the sorted list"""
+        value_index_and_priorities = [(i, p) for i, p in value_index_2_priority.items()]
+        value_index_and_priorities = sorted(value_index_and_priorities, key=lambda t: t[1], reverse=True)
+        prioritized_value_indices = [i for i, _ in value_index_and_priorities]
+        results = [r for r in search_problem_results]
+        
+        def sorter(r):
+            """Returns the tuple of criterion values in decreasing order of priority for the point of the result"""
+            criterion_values = [r.point_solution().point().values()[i] for i in prioritized_value_indices]
+            return tuple(criterion_values)
+            
+        return sorted(results, key=sorter, reverse=True)
 
 
 class TypeConversionUtilities:
