@@ -273,7 +273,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         search_problems = []
         for child_index, region in enumerate(child_search_regions):
             search_problem = SearchProblem(selected_search_problem.momilp_model())
-            search_problem.update_problem(region=region, tabu_y_bars=tabu_y_bars)
+            tabu_y_bars_ = [] if lower_bound_delta > 0 else tabu_y_bars
+            search_problem.update_problem(region=region, tabu_y_bars=tabu_y_bars_)
             # allocate the candidate results of the selected search problem to the child search problem
             for candidate_result in selected_search_problem.candidate_results():
                 point = candidate_result.point_solution().point()
@@ -401,7 +402,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             point_solution = search_problem.result().point_solution()
             if point_solution.point().values()[update_criterion_index] <= lb[update_bound_index]:
                 search_problem.clear_result()
-                search_problem.update_problem(keep_previous_tabu_constraints=True, tabu_y_bars=[point_solution.y_bar()])
+                tabu_y_bars = [] if delta > 0 else [point_solution.y_bar()]
+                search_problem.update_problem(keep_previous_tabu_constraints=True, tabu_y_bars=tabu_y_bars)
             filtered_candidate_results = []
             for candidate_result in search_problem.candidate_results():
                 point = candidate_result.point_solution().point()
