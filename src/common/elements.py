@@ -51,6 +51,22 @@ class Edge:
 
     """Implements edge in the space of the momilp problem"""
     
+    def __eq__(self, other):
+        if not isinstance(other, Edge):
+            return False
+        if self._start_point != other.start_point():
+            return False
+        if self._end_point != other.end_point():
+            return 
+        if self._start_inclusive != other.start_inclusive():
+            return False
+        if self._end_inclusive != other.end_inclusive():
+            return False
+        return True
+
+    def __hash__(self):
+        return hash((self._start_inclusive, hash(self._start_point), self._end_inclusive, hash(self._end_point)))
+
     def __init__(self, start_point, end_point, end_inclusive=True, start_inclusive=True):
         self._end_inclusive = end_inclusive
         self._end_point = end_point
@@ -329,6 +345,9 @@ class Point:
         if isinstance(other, Point):
             return all([math.isclose(u, v, rel_tol=1e-6) for u, v in zip(self._values, other.values())])
         return False
+
+    def __hash__(self):
+        return hash(tuple(self._values))
 
     def __init__(self, values):
         self._values = values
