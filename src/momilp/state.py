@@ -45,7 +45,7 @@ class IterationStatistics:
         self._num_search_problems = num_search_problems
 
     def __str__(self):
-        return str({k[1:]: v for k, v in self.__dict__.items()})
+        return str(self.to_dict())
 
     def average_num_tabu_constraints(self):
         """Returns the average number of tabu-constraints in the search problems of the iteration"""
@@ -70,6 +70,10 @@ class IterationStatistics:
     def num_search_problems(self):
         """Returns the number of search problems in the iteration"""
         return self._num_search_problems
+
+    def to_dict(self):
+        """Returns the dictionary representation of the iteration statistics"""
+        return {k[1:]: round(v, 2) for k, v in self.__dict__.items()}
 
 
 class SolutionState:
