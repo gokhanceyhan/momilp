@@ -53,17 +53,17 @@ class AlgorithmFactory:
 
     @staticmethod
     def _create_cone_based_search_algorithm(
-            model_file, working_dir, discrete_objective_indices=None, explore_decision_space=False, 
+            model_file, working_dir, delta=0.0, discrete_objective_indices=None, explore_decision_space=False, 
             max_num_iterations=None):
         """Creates and returns the cone-based search algorithm"""
         return ConeBasedSearchAlgorithm(
-            model_file, working_dir, discrete_objective_indices=discrete_objective_indices, 
+            model_file, working_dir, delta=delta, discrete_objective_indices=discrete_objective_indices, 
             explore_decision_space=explore_decision_space, max_num_iterations=max_num_iterations)
 
     @staticmethod
     def create(
-            model_file, working_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, discrete_objective_indices=None, 
-            explore_decision_space=False, max_num_iterations=None):
+            model_file, working_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, delta=0.0, 
+            discrete_objective_indices=None, explore_decision_space=False, max_num_iterations=None):
         """Creates an algorithm"""
         model = read(model_file)
         num_obj = model.num_obj
@@ -79,7 +79,7 @@ class AlgorithmFactory:
         # We need to use the model file instead of model itself in order to create different model objects
         if algorithm_type == AlgorithmType.CONE_BASED_SEARCH:
             return AlgorithmFactory._create_cone_based_search_algorithm(
-                model_file, working_dir, discrete_objective_indices=discrete_objective_indices, 
+                model_file, working_dir, delta=delta, discrete_objective_indices=discrete_objective_indices, 
                 explore_decision_space=explore_decision_space, max_num_iterations=max_num_iterations)
 
 
@@ -91,8 +91,9 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
     _STARTING_ITERATION_INDEX = 0
 
     def __init__(
-            self, model_file, working_dir, discrete_objective_indices=None, explore_decision_space=False, 
+            self, model_file, working_dir, delta=0.0, discrete_objective_indices=None, explore_decision_space=False, 
             max_num_iterations=None):
+        self._delta = delta
         self._discrete_objective_indices = discrete_objective_indices or []
         self._dominance_filter = None
         self._elapsed_time_in_seconds_for_search_problem = 0
@@ -147,7 +148,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         return ConvexConeInPositiveQuadrant(
             [RayInTwoDimension(90, PointInTwoDimension([0, 0])), RayInTwoDimension(0, PointInTwoDimension([0, 0]))])
 
-    def _create_pseudo_search_region_in_two_dimension(self, frontier):
+    def _create_pseudo_search_region_in_two_dimension(self, frontier, delta=0.0):
         """Creates a pseudo-search region in two dimension by using the given frontier
         
         The search region has a cone with extreme rays passing through the left-most and right-most extreme points, and 
@@ -159,12 +160,14 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         edges = frontier.edges()
         if len(edges) == 1:
             return
+        left_most_edge = SearchUtilities.shift_edge_in_two_dimension(edges[0], delta=delta)
+        right_most_edge = SearchUtilities.shift_edge_in_two_dimension(edges[-1], delta=delta)
         left_extreme_ray = SearchUtilities.create_ray_in_two_dimension(
-            PointInTwoDimension([0, 0]), edges[0].left_point())
+            PointInTwoDimension([0, 0]), left_most_edge.left_point())
         right_extreme_ray = SearchUtilities.create_ray_in_two_dimension(
-            PointInTwoDimension([0, 0]), edges[-1].right_point())
+            PointInTwoDimension([0, 0]), right_most_edge.right_point())
         cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
-        edge = EdgeInTwoDimension(edges[0].left_point(), edges[-1].right_point())
+        edge = EdgeInTwoDimension(left_most_edge.left_point(), right_most_edge.right_point())
         return SearchRegionInTwoDimension(self._x_obj_name, self._y_obj_name, cone, edge=edge)
 
     @staticmethod
@@ -236,7 +239,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         child_search_regions = SearchUtilities.partition_search_region_in_two_dimension(
             frontier, selected_region, lower_bound_delta=lower_bound_delta)
         # test the child search regions for infeasibility
-        pseudo_search_region = self._create_pseudo_search_region_in_two_dimension(frontier)
+        pseudo_search_region = self._create_pseudo_search_region_in_two_dimension(frontier, delta=lower_bound_delta)
         pseudo_search_problem = None
         feasible_child_region_index = None
         if pseudo_search_region:
@@ -471,7 +474,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         state = self._state
         search_space = state.search_space()
         search_problems = search_space.search_problems()
-        lower_bound_delta = ConeBasedSearchAlgorithm._LOWER_BOUND_DELTA if not self._explore_decision_space else 0.0
+        lower_bound_delta = max(self._delta, ConeBasedSearchAlgorithm._LOWER_BOUND_DELTA) if not \
+            self._explore_decision_space else 0.0
         iteration_index = ConeBasedSearchAlgorithm._STARTING_ITERATION_INDEX
         iteration_limit = (iteration_index + self._max_num_iterations - 1) if self._max_num_iterations is not None \
             else None 

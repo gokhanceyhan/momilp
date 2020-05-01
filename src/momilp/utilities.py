@@ -610,7 +610,7 @@ class SearchUtilities:
         # add the corresponding region for each edge in the frontier
         for edge in frontier.edges():
             # adjust the edge if the lower bound delta is positive
-            edge_ = SearchUtilities.shift_edge_in_two_dimension(edge, abs_delta=lower_bound_delta)
+            edge_ = SearchUtilities.shift_edge_in_two_dimension(edge, delta=lower_bound_delta)
             left_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, edge_.left_point())
             right_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, edge_.right_point())
             cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
@@ -636,11 +636,13 @@ class SearchUtilities:
         return regions
 
     @staticmethod
-    def shift_edge_in_two_dimension(edge, abs_delta=None, relative_delta=None):
+    def shift_edge_in_two_dimension(edge, delta=0.0):
         """Shifts the edge in two dimension by the given delta
         
-        Given delta value is assumed to be on the x-axis objective"""
-        delta = edge.left_point().values()[0] * relative_delta if relative_delta else abs_delta if abs_delta else 0.0
+        The left point shifts in the y-axis and the right point shifts in the x-axis as much as the delta value. 
+        The delta value on the other axis is calculated in a way that each extreme point is still on the same cone"""
+        assert min(edge.left_point().values()[1], edge.right_point().values()[0]) > 0.0, \
+            "there cannot be such an edge in the positive quadrant with non-empty interior"
         left_point_x = edge.left_point().values()[0] + delta
         left_point_y = left_point_x * edge.left_point().values()[1] / edge.left_point().values()[0]
         left_point = PointInTwoDimension([left_point_x, left_point_y])

@@ -115,7 +115,12 @@ class Executor:
     _UNSUPPORTED_SOLVER_PACKAGE_ERROR_MESSAGE = \
         "the solver package is not supported, define the model in one of the '{supported_solvers!s}' solver packages"
 
-    def __init__(self, model_files, solver_package=SolverPackage.GUROBI):
+    def __init__(
+            self, model_files, delta=0.0, explore_decision_space=True, max_num_iterations=None,  
+            solver_package=SolverPackage.GUROBI):
+        self._delta = delta
+        self._explore_decision_space=explore_decision_space
+        self._max_num_iterations = max_num_iterations
         self._statistics = []
         self._model_files = model_files
         if solver_package not in Executor._SUPPORTED_SOLVER_PACKAGES:
@@ -177,7 +182,9 @@ class Executor:
         """Executes the momilp solver"""
         for model_file in self._model_files:
             start_time = time.time()
-            algorithm = AlgorithmFactory.create(model_file, working_dir, explore_decision_space=True)
+            algorithm = AlgorithmFactory.create(
+                model_file, working_dir, delta=self._delta, explore_decision_space=self._explore_decision_space, 
+                max_num_iterations=self._max_num_iterations)
             state = algorithm.run()
             elapsed_time_in_seconds = round(time.time() - start_time, Executor._NUM_DECIMALS_FOR_TIME_IN_SECONDS)
             instance_name = os.path.splitext(os.path.basename(model_file))[0]
@@ -197,6 +204,12 @@ class MomilpSolverApp:
         """Parses and returns the arguments"""
         parser = argparse.ArgumentParser(description="momilp solver app")
         parser.add_argument(
+            "-d", "--delta", default=0.0, help="the shift amount used in separating the dominated space when only a "
+            "subset of the nondominated frontier is required")
+        parser.add_argument(
+            "-e", "--explore-decision-space", action='store_true', help="generate all efficient integer vectors")
+        parser.add_argument("-i", "--iteration-limit", help="maximum nunmber of iterations to run")
+        parser.add_argument(
             "-m", "--model-file-path", 
             help="sets the path to the directory where the model files (.lp format) are stored")
         parser.add_argument(
@@ -209,5 +222,10 @@ class MomilpSolverApp:
         args = self._parse_args()
         model_file_path = args.model_file_path
         model_files = [os.path.join(model_file_path, f) for f in os.listdir(model_file_path) if f.endswith(".lp")]
-        executor = Executor(model_files, solver_package=SolverPackage(args.solver_package))
+        delta = float(args.delta)
+        explore_decision_space = args.explore_decision_space
+        max_num_iterations = int(args.iteration_limit) if args.iteration_limit else None
+        executor = Executor(
+            model_files, delta=delta, explore_decision_space=explore_decision_space, 
+            max_num_iterations=max_num_iterations, solver_package=SolverPackage(args.solver_package))
         executor.execute(args.working_dir)
