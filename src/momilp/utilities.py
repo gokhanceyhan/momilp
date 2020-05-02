@@ -249,7 +249,6 @@ class ReportCreator:
 
     def _set_nondominated_edges_df(self):
         """Sets the data frame of the nondominated edges"""
-        model_sense = self._momilp_model.model_sense()
         solution_state = self._state.solution_state()
         obj_index_2_name = self._momilp_model.objective_index_2_name()
         edges = [nondominated_edge.edge() for nondominated_edge in solution_state.nondominated_edges()]
@@ -257,11 +256,9 @@ class ReportCreator:
         for edge in edges:
             start_point_values = self._restore_original_values(edge.start_point().values())
             end_point_values = self._restore_original_values(edge.end_point().values())
-            # we need to switch the start and end points in case it is a minimization problem
-            start_point, end_point = (Point(start_point_values), Point(end_point_values)) if model_sense == -1 else \
-                (Point(end_point_values), Point(start_point_values))
-            start_inclusive, end_inclusive = (edge.start_inclusive(), edge.end_inclusive()) if model_sense == -1 else \
-                (edge.end_inclusive(), edge.start_inclusive())
+            # we need to switch the start and end points
+            start_point, end_point = Point(end_point_values), Point(start_point_values)
+            start_inclusive, end_inclusive = edge.end_inclusive(), edge.start_inclusive()
             updated_edge = Edge(start_point, end_point, end_inclusive=end_inclusive, start_inclusive=start_inclusive)
             updated_edges.append(updated_edge)
         sorted_edges = self._sort_nondominated_edges(updated_edges)
