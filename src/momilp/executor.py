@@ -116,13 +116,13 @@ class Executor:
         "the solver package is not supported, define the model in one of the '{supported_solvers!s}' solver packages"
 
     def __init__(
-            self, model_files, delta=0.0, explore_decision_space=True, max_num_iterations=None,  
+            self, model_files, explore_decision_space=True, max_num_iterations=None, rel_coverage_gap=0.0, 
             solver_package=SolverPackage.GUROBI):
-        self._delta = delta
         self._explore_decision_space=explore_decision_space
         self._max_num_iterations = max_num_iterations
-        self._statistics = []
         self._model_files = model_files
+        self._rel_coverage_gap = rel_coverage_gap
+        self._statistics = []
         if solver_package not in Executor._SUPPORTED_SOLVER_PACKAGES:
             error_message = Executor._UNSUPPORTED_SOLVER_PACKAGE_ERROR_MESSAGE.format(
                 solver=solver_package, supported_solvers=Executor._SUPPORTED_SOLVER_PACKAGES)
@@ -183,8 +183,8 @@ class Executor:
         for model_file in self._model_files:
             start_time = time.time()
             algorithm = AlgorithmFactory.create(
-                model_file, working_dir, delta=self._delta, explore_decision_space=self._explore_decision_space, 
-                max_num_iterations=self._max_num_iterations)
+                model_file, working_dir, explore_decision_space=self._explore_decision_space, 
+                max_num_iterations=self._max_num_iterations, rel_coverage_gap=self._rel_coverage_gap)
             state = algorithm.run()
             elapsed_time_in_seconds = round(time.time() - start_time, Executor._NUM_DECIMALS_FOR_TIME_IN_SECONDS)
             instance_name = os.path.splitext(os.path.basename(model_file))[0]
@@ -204,8 +204,9 @@ class MomilpSolverApp:
         """Parses and returns the arguments"""
         parser = argparse.ArgumentParser(description="momilp solver app")
         parser.add_argument(
-            "-d", "--delta", default=0.0, help="the shift amount used in separating the dominated space when only a "
-            "subset of the nondominated frontier is required")
+            "-a", "--alpha", default=0.0, help="the shift coefficient used in separating the dominated space when only "
+            "a subset of the nondominated frontier is required (the generated points are multiplied with (1 + alpha) "
+            "while defining the dominated space boundary)")
         parser.add_argument(
             "-e", "--explore-decision-space", action='store_true', help="generate all efficient integer vectors")
         parser.add_argument("-i", "--iteration-limit", help="maximum nunmber of iterations to run")
@@ -222,10 +223,13 @@ class MomilpSolverApp:
         args = self._parse_args()
         model_file_path = args.model_file_path
         model_files = [os.path.join(model_file_path, f) for f in os.listdir(model_file_path) if f.endswith(".lp")]
-        delta = float(args.delta)
+        alpha = float(args.alpha)
         explore_decision_space = args.explore_decision_space
+        if explore_decision_space and alpha > 0:
+            raise ValueError("delta value must be zero if the decision space is to be explored")
         max_num_iterations = int(args.iteration_limit) if args.iteration_limit else None
         executor = Executor(
-            model_files, delta=delta, explore_decision_space=explore_decision_space, 
-            max_num_iterations=max_num_iterations, solver_package=SolverPackage(args.solver_package))
+            model_files, explore_decision_space=explore_decision_space, 
+            max_num_iterations=max_num_iterations, rel_coverage_gap=alpha, 
+            solver_package=SolverPackage(args.solver_package))
         executor.execute(args.working_dir)

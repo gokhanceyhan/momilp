@@ -521,7 +521,7 @@ class SearchUtilities:
         return False
 
     @staticmethod
-    def partition_search_region_in_two_dimension(initial_frontier, initial_region, lower_bound_delta=0.0):
+    def partition_search_region_in_two_dimension(initial_frontier, initial_region):
         """Partition the search region in two dimension
         
         NOTE: Eliminates the subset of the region dominated by the frontier, and returns the relatively nondominated 
@@ -550,7 +550,7 @@ class SearchUtilities:
                 left_extreme_ray = region.cone().left_extreme_ray()
                 right_extreme_ray = region.cone().right_extreme_ray()
                 cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
-                bounds = [point.z1() + lower_bound_delta, initial_lb[1]]
+                bounds = [point.z1(), initial_lb[1]]
                 lb = LowerBoundInTwoDimension(bounds)
                 region_ = SearchUtilities.create_search_region_in_two_dimension(
                     x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb)
@@ -559,7 +559,7 @@ class SearchUtilities:
                 left_extreme_ray = region.cone().left_extreme_ray()
                 right_extreme_ray = region.cone().right_extreme_ray()
                 cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
-                bounds = [initial_lb[0], point.z2() + lower_bound_delta]
+                bounds = [initial_lb[0], point.z2()]
                 lb = LowerBoundInTwoDimension(bounds)
                 region_ = SearchUtilities.create_search_region_in_two_dimension(
                     x_obj_name, y_obj_name, cone, edge=region.edge(), lower_bound=lb)
@@ -577,7 +577,7 @@ class SearchUtilities:
                 left_extreme_ray = region.cone().left_extreme_ray()
                 right_extreme_ray = middle_ray
                 cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
-                bounds = [initial_lb[0], point.z2() + lower_bound_delta]
+                bounds = [initial_lb[0], point.z2()]
                 lb = LowerBoundInTwoDimension(bounds)
                 region_ = SearchUtilities.create_search_region_in_two_dimension(
                     x_obj_name, y_obj_name, cone, edge=left_edge, lower_bound=lb)
@@ -586,7 +586,7 @@ class SearchUtilities:
                 right_extreme_ray = region.cone().right_extreme_ray()
                 left_extreme_ray = middle_ray
                 cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
-                bounds = [point.z1() + lower_bound_delta, initial_lb[1]]
+                bounds = [point.z1(), initial_lb[1]]
                 lb = LowerBoundInTwoDimension(bounds)
                 region_ = SearchUtilities.create_search_region_in_two_dimension(
                     x_obj_name, y_obj_name, cone, edge=right_edge, lower_bound=lb)
@@ -605,17 +605,15 @@ class SearchUtilities:
                 x_obj_name, y_obj_name, 
                 ConvexConeInPositiveQuadrant([region.cone().left_extreme_ray(), right_extreme_ray]), 
                 edge=edge,
-                lower_bound=LowerBoundInTwoDimension([initial_lb[0], left_most_point.z2() + lower_bound_delta]))
+                lower_bound=LowerBoundInTwoDimension([initial_lb[0], left_most_point.z2()]))
             regions.append(left_most_region)
         # add the corresponding region for each edge in the frontier
         for edge in frontier.edges():
-            # adjust the edge if the lower bound delta is positive
-            edge_ = SearchUtilities.shift_edge_in_two_dimension(edge, delta=lower_bound_delta)
-            left_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, edge_.left_point())
-            right_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, edge_.right_point())
+            left_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, edge.left_point())
+            right_extreme_ray = SearchUtilities.create_ray_in_two_dimension(origin, edge.right_point())
             cone = ConvexConeInPositiveQuadrant([left_extreme_ray, right_extreme_ray])
             region_ = SearchUtilities.create_search_region_in_two_dimension(
-                x_obj_name, y_obj_name, cone, edge=edge_, 
+                x_obj_name, y_obj_name, cone, edge=edge, 
                 lower_bound=LowerBoundInTwoDimension([initial_lb[0], initial_lb[1]]))
             regions.append(region_)
         # add a region for the right-most region
@@ -631,26 +629,35 @@ class SearchUtilities:
                 x_obj_name, y_obj_name, 
                 ConvexConeInPositiveQuadrant([left_extreme_ray, region.cone().right_extreme_ray()]), 
                 edge=edge, 
-                lower_bound=LowerBoundInTwoDimension([right_most_point.z1() + lower_bound_delta, initial_lb[1]]))
+                lower_bound=LowerBoundInTwoDimension([right_most_point.z1(), initial_lb[1]]))
             regions.append(right_most_region)
         return regions
 
     @staticmethod
-    def shift_edge_in_two_dimension(edge, delta=0.0):
-        """Shifts the edge in two dimension by the given delta
+    def shift_edge_in_two_dimension(edge, alpha=0.0):
+        """Shifts the edge in two dimension by multiplying its extreme points with (1 + 'alpha')"""
+        left_point = SearchUtilities.shift_point(edge.left_point(), alpha=alpha)
+        right_point = SearchUtilities.shift_point(edge.right_point(), alpha=alpha)
+        return FrontierEdgeInTwoDimension(
+            left_point, right_point, left_inclusive=edge.left_inclusive(), right_inclusive=edge.right_inclusive()) if \
+            isinstance(edge, FrontierEdgeInTwoDimension) else EdgeInTwoDimension(
+                left_point, right_point, left_inclusive=edge.left_inclusive(), right_inclusive=edge.right_inclusive())
+
+    @staticmethod
+    def shift_frontier_in_two_dimension(frontier, alpha=0.0):
+        """Shifts the frontier in two dimension by multiplying it with ( 1 + 'alpha')
         
-        The left point shifts in the y-axis and the right point shifts in the x-axis as much as the delta value. 
-        The delta value on the other axis is calculated in a way that each extreme point is still on the same cone"""
-        assert min(edge.left_point().values()[1], edge.right_point().values()[0]) > 0.0, \
-            "there cannot be such an edge in the positive quadrant with non-empty interior"
-        left_point_x = edge.left_point().values()[0] + delta
-        left_point_y = left_point_x * edge.left_point().values()[1] / edge.left_point().values()[0]
-        left_point = PointInTwoDimension([left_point_x, left_point_y])
-        right_point_x = edge.right_point().values()[0] + delta
-        right_point_y = right_point_x * edge.right_point().values()[1] / edge.right_point().values()[0]
-        right_point = PointInTwoDimension([right_point_x, right_point_y])
-        return EdgeInTwoDimension(
-            left_point, right_point, left_inclusive=edge.left_inclusive(), right_inclusive=edge.right_inclusive())
+        The new frontier is parallel to the initial frontier in the two-dimensional space"""
+        if frontier.point():
+            return FrontierInTwoDimension(point=SearchUtilities.shift_point(frontier.point(), alpha=alpha))
+        edges = [SearchUtilities.shift_edge_in_two_dimension(e, alpha=alpha) for e in frontier.edges()]
+        return FrontierInTwoDimension(edges=edges)
+
+    @staticmethod
+    def shift_point(point, alpha=0.0):
+        """Shifts the point by multiplying its values with (1 + alpha)"""
+        values = [v * (1 + alpha) for v in point.values()]
+        return PointInTwoDimension(values) if isinstance(point, PointInTwoDimension) else Point(values)
 
     @staticmethod
     def sort_search_problem_results(search_problem_results, value_index_2_priority):

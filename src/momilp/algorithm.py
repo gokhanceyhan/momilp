@@ -53,17 +53,19 @@ class AlgorithmFactory:
 
     @staticmethod
     def _create_cone_based_search_algorithm(
-            model_file, working_dir, delta=0.0, discrete_objective_indices=None, explore_decision_space=False, 
-            max_num_iterations=None):
+            model_file, working_dir, discrete_objective_indices=None, explore_decision_space=False, 
+            max_num_iterations=None, rel_coverage_gap=0.0):
         """Creates and returns the cone-based search algorithm"""
         return ConeBasedSearchAlgorithm(
-            model_file, working_dir, delta=delta, discrete_objective_indices=discrete_objective_indices, 
-            explore_decision_space=explore_decision_space, max_num_iterations=max_num_iterations)
+            model_file, working_dir, discrete_objective_indices=discrete_objective_indices, 
+            explore_decision_space=explore_decision_space, max_num_iterations=max_num_iterations, 
+            rel_coverage_gap=rel_coverage_gap)
 
     @staticmethod
     def create(
-            model_file, working_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, delta=0.0, 
-            discrete_objective_indices=None, explore_decision_space=False, max_num_iterations=None):
+            model_file, working_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, 
+            discrete_objective_indices=None, explore_decision_space=False, max_num_iterations=None, 
+            rel_coverage_gap=0.0):
         """Creates an algorithm"""
         model = read(model_file)
         num_obj = model.num_obj
@@ -79,21 +81,21 @@ class AlgorithmFactory:
         # We need to use the model file instead of model itself in order to create different model objects
         if algorithm_type == AlgorithmType.CONE_BASED_SEARCH:
             return AlgorithmFactory._create_cone_based_search_algorithm(
-                model_file, working_dir, delta=delta, discrete_objective_indices=discrete_objective_indices, 
-                explore_decision_space=explore_decision_space, max_num_iterations=max_num_iterations)
+                model_file, working_dir, discrete_objective_indices=discrete_objective_indices, 
+                explore_decision_space=explore_decision_space, max_num_iterations=max_num_iterations, 
+                rel_coverage_gap=rel_coverage_gap)
 
 
 class ConeBasedSearchAlgorithm(AbstractAlgorithm):
 
     """Implements the cone-based search algorithm"""
 
-    _LOWER_BOUND_DELTA = 1e-4
+    _ALPHA = 1e-5
     _STARTING_ITERATION_INDEX = 0
 
     def __init__(
-            self, model_file, working_dir, delta=0.0, discrete_objective_indices=None, explore_decision_space=False, 
-            max_num_iterations=None):
-        self._delta = delta
+            self, model_file, working_dir, discrete_objective_indices=None, explore_decision_space=False, 
+            max_num_iterations=None, rel_coverage_gap=0.0):
         self._discrete_objective_indices = discrete_objective_indices or []
         self._dominance_filter = None
         self._elapsed_time_in_seconds_for_search_problem = 0
@@ -107,6 +109,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         self._objective_index_2_priority = {}
         self._primary_objective_index = None
         self._projected_space_criterion_index_2_criterion_index = {}
+        self._rel_coverage_gap = rel_coverage_gap
         self._state = None
         self._x_obj_name = None
         self._y_obj_name = None
@@ -148,7 +151,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         return ConvexConeInPositiveQuadrant(
             [RayInTwoDimension(90, PointInTwoDimension([0, 0])), RayInTwoDimension(0, PointInTwoDimension([0, 0]))])
 
-    def _create_pseudo_search_region_in_two_dimension(self, frontier, delta=0.0):
+    def _create_pseudo_search_region_in_two_dimension(self, frontier):
         """Creates a pseudo-search region in two dimension by using the given frontier
         
         The search region has a cone with extreme rays passing through the left-most and right-most extreme points, and 
@@ -160,8 +163,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         edges = frontier.edges()
         if len(edges) == 1:
             return
-        left_most_edge = SearchUtilities.shift_edge_in_two_dimension(edges[0], delta=delta)
-        right_most_edge = SearchUtilities.shift_edge_in_two_dimension(edges[-1], delta=delta)
+        left_most_edge = edges[0]
+        right_most_edge = edges[-1]
         left_extreme_ray = SearchUtilities.create_ray_in_two_dimension(
             PointInTwoDimension([0, 0]), left_most_edge.left_point())
         right_extreme_ray = SearchUtilities.create_ray_in_two_dimension(
@@ -225,7 +228,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         for key, value in kwargs.items():
             logging.info("%s = %s" % (key, value))
 
-    def _partition_search_problem(self, frontier, selected_search_problem, lower_bound_delta=0.0, tol=1e-6):
+    def _partition_search_problem(self, frontier, selected_search_problem, tol=1e-6):
         """Partitions the search problem and returns the new search problems"""
         # add the integer vector to the list of tabu integer vectors
         projected_space_criterion_indices = self._projected_space_criterion_index_2_criterion_index.values()
@@ -236,10 +239,9 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         if y_bar not in tabu_y_bars:
             tabu_y_bars.append(y_bar)
         # partition the selected search region
-        child_search_regions = SearchUtilities.partition_search_region_in_two_dimension(
-            frontier, selected_region, lower_bound_delta=lower_bound_delta)
+        child_search_regions = SearchUtilities.partition_search_region_in_two_dimension(frontier, selected_region)
         # test the child search regions for infeasibility
-        pseudo_search_region = self._create_pseudo_search_region_in_two_dimension(frontier, delta=lower_bound_delta)
+        pseudo_search_region = self._create_pseudo_search_region_in_two_dimension(frontier)
         pseudo_search_problem = None
         feasible_child_region_index = None
         if pseudo_search_region:
@@ -276,7 +278,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         search_problems = []
         for child_index, region in enumerate(child_search_regions):
             search_problem = SearchProblem(selected_search_problem.momilp_model())
-            tabu_y_bars_ = [] if lower_bound_delta > 0 else tabu_y_bars
+            tabu_y_bars_ = tabu_y_bars if self._explore_decision_space else []
             search_problem.update_problem(region=region, tabu_y_bars=tabu_y_bars_)
             # allocate the candidate results of the selected search problem to the child search problem
             for candidate_result in selected_search_problem.candidate_results():
@@ -384,7 +386,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             self._elapsed_time_in_seconds_for_slice_problem = end - start
             return result
 
-    def _update_lower_bounds(self, reference_point, search_problems, selected_search_problem_index, delta=0.0):
+    def _update_lower_bounds(self, reference_point, search_problems, selected_search_problem_index):
         """Updates the lower bounds of the search problems to eliminate the dominated regions by the reference point"""
         for index, search_problem in enumerate(search_problems):
             if index == selected_search_problem_index:
@@ -395,9 +397,9 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             reference_point_value = reference_point.values()[update_criterion_index]
             region = search_problem.region()
             lb = region.lower_bound().bounds()
-            needs_update = lb[update_bound_index] < reference_point_value + delta
+            needs_update = lb[update_bound_index] < reference_point_value
             if needs_update:
-                lb[update_bound_index] = reference_point_value + delta
+                lb[update_bound_index] = reference_point_value
                 region = SearchUtilities.create_search_region_in_two_dimension(
                     region.x_obj_name(), region.y_obj_name(), region.cone(), edge=region.edge(), 
                     lower_bound=LowerBoundInTwoDimension(lb), id_=region.id())
@@ -405,7 +407,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             point_solution = search_problem.result().point_solution()
             if point_solution.point().values()[update_criterion_index] <= lb[update_bound_index]:
                 search_problem.clear_result()
-                tabu_y_bars = [] if delta > 0 else [point_solution.y_bar()]
+                tabu_y_bars = [point_solution.y_bar()] if self._explore_decision_space else []
                 search_problem.update_problem(keep_previous_tabu_constraints=True, tabu_y_bars=tabu_y_bars)
             filtered_candidate_results = []
             for candidate_result in search_problem.candidate_results():
@@ -474,8 +476,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         state = self._state
         search_space = state.search_space()
         search_problems = search_space.search_problems()
-        lower_bound_delta = max(self._delta, ConeBasedSearchAlgorithm._LOWER_BOUND_DELTA) if not \
-            self._explore_decision_space else 0.0
+        rel_coverage_gap = 0.0 if self._explore_decision_space else self._rel_coverage_gap if \
+            self._rel_coverage_gap > 0 else ConeBasedSearchAlgorithm._ALPHA
         iteration_index = ConeBasedSearchAlgorithm._STARTING_ITERATION_INDEX
         iteration_limit = (iteration_index + self._max_num_iterations - 1) if self._max_num_iterations is not None \
             else None 
@@ -501,16 +503,16 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             # solve the slice problem
             slice_problem_result = self._solve_slice_problem(
                 iteration_index, selected_region, selected_point_solution)
-            frontier = slice_problem_result.frontier_solution().frontier()            
+            frontier = slice_problem_result.frontier_solution().frontier()
+            shifted_frontier = SearchUtilities.shift_frontier_in_two_dimension(frontier, alpha=rel_coverage_gap)
+            shifted_ideal_point = SearchUtilities.shift_point(
+                slice_problem_result.ideal_point(), alpha=rel_coverage_gap)       
             # update the search space
-            self._update_lower_bounds(
-                slice_problem_result.ideal_point(), search_problems, selected_search_problem_index, 
-                delta=lower_bound_delta)
+            self._update_lower_bounds(shifted_ideal_point, search_problems, selected_search_problem_index)
             # update the state
             self._update_state(selected_point_solution, frontier, iteration_index)
             # partition the selected region and create the new search problems
-            child_search_problems = self._partition_search_problem(
-                frontier, selected_search_problem, lower_bound_delta=lower_bound_delta)
+            child_search_problems = self._partition_search_problem(shifted_frontier, selected_search_problem)
             search_space.delete_search_problem(selected_search_problem_index)
             for i, p in enumerate(child_search_problems):
                 search_space.add_search_problem(p, index = selected_search_problem_index + i)
