@@ -53,19 +53,19 @@ class AlgorithmFactory:
 
     @staticmethod
     def _create_cone_based_search_algorithm(
-            model_file, working_dir, discrete_objective_indices=None, explore_decision_space=False, 
-            max_num_iterations=None, rel_coverage_gap=0.0):
+            model_file, working_dir, dichotomic_search_rel_tol=1e-6, discrete_objective_indices=None, 
+            explore_decision_space=False, max_num_iterations=None, rel_coverage_gap=0.0):
         """Creates and returns the cone-based search algorithm"""
         return ConeBasedSearchAlgorithm(
-            model_file, working_dir, discrete_objective_indices=discrete_objective_indices, 
-            explore_decision_space=explore_decision_space, max_num_iterations=max_num_iterations, 
-            rel_coverage_gap=rel_coverage_gap)
+            model_file, working_dir, dichotomic_search_rel_tol=dichotomic_search_rel_tol, 
+            discrete_objective_indices=discrete_objective_indices, explore_decision_space=explore_decision_space, 
+            max_num_iterations=max_num_iterations, rel_coverage_gap=rel_coverage_gap)
 
     @staticmethod
     def create(
             model_file, working_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, 
-            discrete_objective_indices=None, explore_decision_space=False, max_num_iterations=None, 
-            rel_coverage_gap=0.0):
+            dichotomic_search_rel_tol=1e-6, discrete_objective_indices=None, explore_decision_space=False, 
+            max_num_iterations=None, rel_coverage_gap=0.0):
         """Creates an algorithm"""
         model = read(model_file)
         num_obj = model.num_obj
@@ -81,9 +81,9 @@ class AlgorithmFactory:
         # We need to use the model file instead of model itself in order to create different model objects
         if algorithm_type == AlgorithmType.CONE_BASED_SEARCH:
             return AlgorithmFactory._create_cone_based_search_algorithm(
-                model_file, working_dir, discrete_objective_indices=discrete_objective_indices, 
-                explore_decision_space=explore_decision_space, max_num_iterations=max_num_iterations, 
-                rel_coverage_gap=rel_coverage_gap)
+                model_file, working_dir, dichotomic_search_rel_tol=dichotomic_search_rel_tol, 
+                discrete_objective_indices=discrete_objective_indices, explore_decision_space=explore_decision_space, 
+                max_num_iterations=max_num_iterations, rel_coverage_gap=rel_coverage_gap)
 
 
 class ConeBasedSearchAlgorithm(AbstractAlgorithm):
@@ -94,8 +94,9 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
     _STARTING_ITERATION_INDEX = 0
 
     def __init__(
-            self, model_file, working_dir, discrete_objective_indices=None, explore_decision_space=False, 
-            max_num_iterations=None, rel_coverage_gap=0.0):
+            self, model_file, working_dir, dichotomic_search_rel_tol=1e-6, discrete_objective_indices=None, 
+            explore_decision_space=False, max_num_iterations=None, rel_coverage_gap=0.0):
+        self._dichotomic_search_rel_tol = dichotomic_search_rel_tol
         self._discrete_objective_indices = discrete_objective_indices or []
         self._dominance_filter = None
         self._elapsed_time_in_seconds_for_search_problem = 0
@@ -208,7 +209,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         # create a slice problem
         try:
             slice_problem = SliceProblem(
-                self._create_momilp_model(), self._projected_space_criterion_index_2_criterion_index)
+                self._create_momilp_model(), self._projected_space_criterion_index_2_criterion_index, 
+                dichotomic_search_rel_tol=self._dichotomic_search_rel_tol)
         except BaseException as e:
             raise RuntimeError(
                 "failed to create the slice problem in the initialization of the cone-based search algorithm") from e
@@ -297,7 +299,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
             point = point_solution.point()
             point_in_two_dimension = TypeConversionUtilities.point_to_point_in_two_dimension(
                 projected_space_criterion_indices, point)
-            if DominanceRules.PointToFrontier.dominated(point_in_two_dimension, frontier):
+            if not SearchUtilities.is_point_in_region_in_two_dimension(point_in_two_dimension, region):
                 continue
             # set the already found point in pseudo problem in case it is not dominated by the frontier
             search_problem.update_result(SearchProblemResult(point_solution, status))

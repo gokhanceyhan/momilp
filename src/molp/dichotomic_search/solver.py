@@ -18,9 +18,10 @@ class BolpDichotomicSearchWithGurobiSolver(MolpSolver):
 
     """Implements bi-objective linear programming problem solver by applying dichotomic search with Gurobi solver"""
 
-    def __init__(self, model, log_to_console=False, log_to_file=True):
+    def __init__(self, model, log_to_console=False, log_to_file=True, obj_rel_tol=1e-6):
         super(BolpDichotomicSearchWithGurobiSolver, self).__init__(model)
         self._extreme_supported_nondominated_points = []
+        self._obj_rel_tol = obj_rel_tol
         self._point_pairs_to_check = []
         self._set_model_params(log_to_console=log_to_console, log_to_file=log_to_file)
         self._validate()
@@ -104,7 +105,7 @@ class BolpDichotomicSearchWithGurobiSolver(MolpSolver):
         """Returns the extreme supported nondominated points"""
         return self._extreme_supported_nondominated_points
     
-    def solve(self, rel_tol=1e-6):
+    def solve(self):
         model = self._model
         point_pairs_two_check = self._point_pairs_to_check
         while len(point_pairs_two_check) > 0:
@@ -121,12 +122,10 @@ class BolpDichotomicSearchWithGurobiSolver(MolpSolver):
                 continue
             left_extreme_point_obj_value = point_with_higher_z2_value.values()[0] * obj_index_2_weight[0] + \
                 point_with_higher_z2_value.values()[1] * obj_index_2_weight[1]
-            right_extreme_point_obj_value = point_with_higher_z1_value.values()[0] * obj_index_2_weight[0] + \
-                point_with_higher_z1_value.values()[1] * obj_index_2_weight[1]
-            assert math.isclose(
-                left_extreme_point_obj_value, right_extreme_point_obj_value, rel_tol=rel_tol), "this should not happen"
             point_obj_value = point.values()[0] * obj_index_2_weight[0] + point.values()[1] * obj_index_2_weight[1]
-            if math.isclose(point_obj_value, left_extreme_point_obj_value, rel_tol=rel_tol):
+            # do not include the new extreme supported point if it close to the edge between the adjacent points, that 
+            # is, the obj function value does not improve much.
+            if math.isclose(point_obj_value, left_extreme_point_obj_value, rel_tol=self._obj_rel_tol):
                 continue
             self._extreme_supported_nondominated_points.append(point)
             point_pairs_two_check.append(
