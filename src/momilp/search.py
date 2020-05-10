@@ -366,8 +366,9 @@ class SliceProblem(Problem):
 
     _INVALID_INTEGER_VECTOR_ERROR_MESSAGE = "Failed to validate the problem for y='%s' and y_bar='%s'"
 
-    def __init__(self, momilp_model, slice_prob_obj_index_2_original_prob_obj_index):
+    def __init__(self, momilp_model, slice_prob_obj_index_2_original_prob_obj_index, dichotomic_search_rel_tol=1e-6):
         super(SliceProblem, self).__init__(momilp_model)
+        self._dichotomic_search_rel_tol = dichotomic_search_rel_tol
         self._primary_objective_index = momilp_model.primary_objective_index()
         self._primary_objective_value = None
         self._region = None
@@ -452,7 +453,7 @@ class SliceProblem(Problem):
         if self._region:
             self._add_region_defining_constraints_in_two_dimension(self._region)
         model = self._momilp_model.problem()
-        solver = BolpDichotomicSearchWithGurobiSolver(model)
+        solver = BolpDichotomicSearchWithGurobiSolver(model, obj_rel_tol=self._dichotomic_search_rel_tol)
         solver.solve()
         points = solver.extreme_supported_nondominated_points()
         if len(points) == 1:

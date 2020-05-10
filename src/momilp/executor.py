@@ -116,8 +116,9 @@ class Executor:
         "the solver package is not supported, define the model in one of the '{supported_solvers!s}' solver packages"
 
     def __init__(
-            self, model_files, explore_decision_space=True, max_num_iterations=None, rel_coverage_gap=0.0, 
-            solver_package=SolverPackage.GUROBI):
+            self, model_files, dichotomic_search_rel_tol=1e-6, explore_decision_space=True, max_num_iterations=None, 
+            rel_coverage_gap=0.0, solver_package=SolverPackage.GUROBI):
+        self._dichotomic_search_rel_tol = dichotomic_search_rel_tol
         self._explore_decision_space=explore_decision_space
         self._max_num_iterations = max_num_iterations
         self._model_files = model_files
@@ -183,8 +184,9 @@ class Executor:
         for model_file in self._model_files:
             start_time = time.time()
             algorithm = AlgorithmFactory.create(
-                model_file, working_dir, explore_decision_space=self._explore_decision_space, 
-                max_num_iterations=self._max_num_iterations, rel_coverage_gap=self._rel_coverage_gap)
+                model_file, working_dir, dichotomic_search_rel_tol=self._dichotomic_search_rel_tol, 
+                explore_decision_space=self._explore_decision_space, max_num_iterations=self._max_num_iterations, 
+                rel_coverage_gap=self._rel_coverage_gap)
             state = algorithm.run()
             elapsed_time_in_seconds = round(time.time() - start_time, Executor._NUM_DECIMALS_FOR_TIME_IN_SECONDS)
             instance_name = os.path.splitext(os.path.basename(model_file))[0]
@@ -204,9 +206,17 @@ class MomilpSolverApp:
         """Parses and returns the arguments"""
         parser = argparse.ArgumentParser(description="momilp solver app")
         parser.add_argument(
-            "-a", "--alpha", default=0.0, help="the shift coefficient used in separating the dominated space when only "
-            "a subset of the nondominated frontier is required (the generated points are multiplied with (1 + alpha) "
-            "while defining the dominated space boundary)")
+            "-a", "--alpha", default=0.0, help="the shift coefficient used in separating the dominated space. This "
+            "can be set to a positive value when an approximation of the nondominated frontier is sufficient for the "
+            "use case instead of the exact nondominated set (the generated points are multiplied with (1 + alpha) "
+            "while defining the dominated space boundary). The generated set is an approximation of the true "
+            "nondominated set and may include dominated points. However, the generated set 'alpha-dominates' the "
+            "nondominated set.")
+        parser.add_argument(
+            "-b", "--beta", default=1e-6, help="the stopping condition parameter for the dichotomic search while "
+            "generating the frontier of a slice problem. An extreme supported ppoint will not be generated if its "
+            "objective function value is not higher than (1 + beta) of the objective function value of the adjacent "
+            "extreme supported points.")
         parser.add_argument(
             "-e", "--explore-decision-space", action='store_true', help="generate all efficient integer vectors")
         parser.add_argument("-i", "--iteration-limit", help="maximum nunmber of iterations to run")
@@ -224,12 +234,13 @@ class MomilpSolverApp:
         model_file_path = args.model_file_path
         model_files = [os.path.join(model_file_path, f) for f in os.listdir(model_file_path) if f.endswith(".lp")]
         alpha = float(args.alpha)
+        beta = float(args.beta)
         explore_decision_space = args.explore_decision_space
         if explore_decision_space and alpha > 0:
-            raise ValueError("delta value must be zero if the decision space is to be explored")
+            raise ValueError("alpha value must be zero if the decision space is to be explored")
         max_num_iterations = int(args.iteration_limit) if args.iteration_limit else None
         executor = Executor(
-            model_files, explore_decision_space=explore_decision_space, 
+            model_files, dichotomic_search_rel_tol=beta, explore_decision_space=explore_decision_space, 
             max_num_iterations=max_num_iterations, rel_coverage_gap=alpha, 
             solver_package=SolverPackage(args.solver_package))
         executor.execute(args.working_dir)
