@@ -78,7 +78,7 @@ class BolpDichotomicSearchWithGurobiSolver(MolpSolver):
     def _set_model_params(self, feas_tol=1e-9, log_to_console=False, log_to_file=True, opt_tol=1e-9):
         """Sets the model parameters
         
-        NOTE: Default feasibility or optimality tolerances of Gurobu (1e-6) are leading to incorrect nd set when the 
+        NOTE: Default feasibility or optimality tolerances of Gurobi (1e-6) are leading to incorrect nd set when the 
         objective functions are scaled"""
         model = self._model
         if not log_to_console:

@@ -177,6 +177,8 @@ class ModelQueryUtilities:
         """Queries the model for a feasible solution, and returns the best feasible solution if there exists any"""
         status = ModelQueryUtilities.GUROBI_STATUS_2_OPTIMIZATION_STATUS.get(
             model.getAttr("Status"), OptimizationStatus.UNDEFINED)
+        if model.SolCount == 0:
+            status = OptimizationStatus.SOLUTION_UNAVAILABLE
         error_message = "the optimization call for the '%s' model ended with the '%s' status" % (
             model.getAttr("ModelName"), status.value)
         if solver_stage:
@@ -184,7 +186,7 @@ class ModelQueryUtilities:
         point_solution = None
         if status == OptimizationStatus.UNDEFINED:
             raise RuntimeError(error_message)
-        if status == OptimizationStatus.INFEASIBLE:
+        if status in [OptimizationStatus.INFEASIBLE, OptimizationStatus.SOLUTION_UNAVAILABLE]:
             if raise_error_if_infeasible:
                 raise RuntimeError(error_message)
             return SearchProblemResult(point_solution, status)
