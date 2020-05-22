@@ -5,7 +5,7 @@ from copy import copy, deepcopy
 from gurobipy import GRB, LinExpr, Model, QuadExpr, read
 import math
 from operator import itemgetter
-from src.common.elements import SolverStage
+from src.common.elements import Point, PointSolution, SolverStage
 from src.momilp.utilities import ModelQueryUtilities
 
 
@@ -88,7 +88,8 @@ class GurobiMomilpModel(AbstractModel):
     _MODEL_NAME = "P"
 
     def __init__(
-            self, model_file, discrete_objective_indices=None, log_to_console=False, log_to_file=True, num_obj=None):
+            self, model_file, discrete_objective_indices=None, log_to_console=False, log_to_file=True, num_obj=None, 
+            num_threads=None, obj_index_2_range=None, time_limit_in_seconds=None):
         self._constraint_name_2_constraint = {}
         self._discrete_objective_indices = discrete_objective_indices or []
         self._int_var_2_original_lb_and_ub = {}
@@ -113,12 +114,53 @@ class GurobiMomilpModel(AbstractModel):
         self._tabu_constraint_names = []
         self._y = []
         self._validate()
-        self._initialize()
-        self._set_params(log_to_console=log_to_console, log_to_file=log_to_file)
+        self._preprocess()
+        self._set_params(
+            log_to_console=log_to_console, log_to_file=log_to_file, num_threads=num_threads, 
+            time_limit_in_seconds=time_limit_in_seconds)
+        self._calculate_objective_ranges(obj_index_2_range=obj_index_2_range)
         self._scale_model()
 
-    def _initialize(self):
-        """Creates the constraints in the problem"""
+    def _calculate_objective_ranges(self, obj_index_2_range=None):
+        """Calculates and sets the objective range by generating the maximum and minimum solutions for each objective"""
+        obj_index_2_range = obj_index_2_range or {}
+        model = self._model
+        max_priority = 0
+        for obj_index in range(self._num_obj):
+            model.setParam("ObjNumber", obj_index)
+            priority = model.getAttr("ObjNPriority")
+            max_priority = max(max_priority, priority)
+        for obj_index in range(self._num_obj):
+            model.setParam("ObjNumber", obj_index)
+            obj_name = model.getAttr("ObjNName")
+            priority = model.getAttr("ObjNPriority")
+            # make the objective as the highest priority objective
+            model.setAttr("ObjNPriority", max_priority + 1)
+            # use the bounds if given
+            lower_bound, upper_bound = obj_index_2_range.get(obj_index, (None, None))
+            if upper_bound is None:
+                # maximize
+                model.setAttr("ModelSense", -1)
+                model.optimize()
+                max_point_sol = ModelQueryUtilities.query_optimal_solution(
+                    model, self._y, raise_error_if_infeasible=True, 
+                    solver_stage=SolverStage.MODEL_SCALING).point_solution()
+                upper_bound = max_point_sol.point().values()[obj_index]
+            if lower_bound is None:
+                # minimize
+                model.setAttr("ModelSense", 1)
+                model.optimize()
+                min_point_sol = ModelQueryUtilities.query_optimal_solution(
+                    model, self._y, raise_error_if_infeasible=True, 
+                    solver_stage=SolverStage.MODEL_SCALING).point_solution()
+                lower_bound = min_point_sol.point().values()[obj_index]
+            self._objective_name_2_range[obj_name] = (lower_bound, upper_bound)
+            # restore the original priority of the objective
+            model.setAttr("ObjNPriority", priority)
+        model.update()
+
+    def _preprocess(self):
+        """Preprocess the model"""
         model = self._model
         for constraint in model.getConstrs():
             self._constraint_name_2_constraint[constraint.getAttr("ConstrName")] = constraint
@@ -158,41 +200,14 @@ class GurobiMomilpModel(AbstractModel):
         shifted so that the minimum value vector is on the origin."""
         model = self._model
         sense = self._model_sense
-        # Implement the procedure to transform the feasible objective space into R_{>=0} and scale the criterion 
+        # implement the procedure to transform the feasible objective space into R_{>=0} and scale the criterion 
         # vectors to interval [0, 1]
-        max_priority = 0
-        for obj_index in range(self._num_obj):
-            model.setParam("ObjNumber", obj_index)
-            priority = model.getAttr("ObjNPriority")
-            max_priority = max(max_priority, priority)
-        for obj_index in range(self._num_obj):
-            model.setParam("ObjNumber", obj_index)
-            obj_name = model.getAttr("ObjNName")
-            priority = model.getAttr("ObjNPriority")
-            # make the objective as the highest priority objective
-            model.setAttr("ObjNPriority", max_priority + 1)
-            # maximize
-            model.setAttr("ModelSense", -1)
-            model.optimize()
-            max_point_sol = ModelQueryUtilities.query_optimal_solution(
-                model, self._y, raise_error_if_infeasible=True, 
-                solver_stage=SolverStage.MODEL_SCALING).point_solution()
-            # minimize
-            model.setAttr("ModelSense", 1)
-            model.optimize()
-            min_point_sol = ModelQueryUtilities.query_optimal_solution(
-                model, self._y, raise_error_if_infeasible=True, 
-                solver_stage=SolverStage.MODEL_SCALING).point_solution()
-            self._objective_name_2_range[obj_name] = ObjectiveRange(max_point_sol, min_point_sol)
-            # restore the original priority of the objective
-            model.setAttr("ObjNPriority", priority)
-        # scale
         for obj_index in range(self._num_obj):
             model.setParam("ObjNumber", obj_index)
             obj_name = model.getAttr("ObjNName")
             obj_range = self._objective_name_2_range[obj_name]
-            obj_max=obj_range.max_point_solution().point().values()[obj_index]
-            obj_min=obj_range.min_point_solution().point().values()[obj_index]
+            obj_max=obj_range[1]
+            obj_min=obj_range[0]
             scaling_coeff = sense * ((obj_max - obj_min) if scale_objective_ranges and obj_max > obj_min else 1)
             self._objective_name_2_scaling_coeff[obj_name] = scaling_coeff
             scaling_constant = -1 * sense * obj_min
@@ -208,15 +223,20 @@ class GurobiMomilpModel(AbstractModel):
         model.update()
 
     def _set_params(
-        self, log_to_console=False, log_to_file=True, feas_tol=1e-6, int_feas_tol=1e-6, mip_gap=1e-6, rel_tol=0.0):
+            self, log_to_console=False, log_to_file=True, feas_tol=1e-6, int_feas_tol=1e-6, mip_gap=1e-6, 
+            num_threads=None, obj_rel_tol=0.0, time_limit_in_seconds=None):
         """Sets the model parameters"""
         model = self._model
         for index in range(self._num_obj):
             model.setParam("ObjNumber", index)
-            model.setAttr("ObjNRelTol", rel_tol)
+            model.setAttr("ObjNRelTol", obj_rel_tol)
         model.Params.MIPGap = mip_gap
         model.Params.FeasibilityTol = feas_tol
         model.Params.IntFeasTol = int_feas_tol
+        if num_threads:
+            model.Params.Threads = num_threads
+        if time_limit_in_seconds:
+            model.Params.TimeLimit = time_limit_in_seconds
         model.update()
 
     def _validate(self):
@@ -299,11 +319,10 @@ class GurobiMomilpModel(AbstractModel):
         if self._num_obj == 2:
             return True
         primary_objective_name = self._objective_index_2_name[self._primary_objective_index]
-        max_point_solution = self._objective_name_2_range[primary_objective_name].max_point_solution()
-        min_point_solution = self._objective_name_2_range[primary_objective_name].min_point_solution()
-        range = max_point_solution.point().values()[self._primary_objective_index] - \
-            min_point_solution.point().values()[self._primary_objective_index]
-        return self._num_obj == 3 and math.isclose(range, 0.0, rel_tol=1e-6)
+        max_point_value = self._objective_name_2_range[primary_objective_name][1]
+        min_point_value = self._objective_name_2_range[primary_objective_name][0]
+        range_ = max_point_value - min_point_value
+        return self._num_obj == 3 and math.isclose(range_, 0.0, rel_tol=1e-6)
 
     def change_objective_priorities(self, obj_num_2_priority):
         """Changes the priorities of the objectives based on the given objective number to priority dictionary"""
@@ -355,7 +374,7 @@ class GurobiMomilpModel(AbstractModel):
         return self._objective_index_2_priority
 
     def objective_name_2_range(self):
-        """Returns the objective name to objective range"""
+        """Returns the objective name to objective range (lower bound, upper bound)"""
         return self._objective_name_2_range
 
     def objective_name_2_scaling_coeff(self):
@@ -453,20 +472,3 @@ class GurobiMomilpModel(AbstractModel):
 
     def write(self, file_name):
         self._model.write(file_name)
-
-
-class ObjectiveRange:
-
-    """Implements objective range"""
-
-    def __init__(self, max_point_solution, min_point_solution):
-        self._max_point_solution = max_point_solution
-        self._min_point_solution = min_point_solution
-
-    def max_point_solution(self):
-        """Returns the max point solution"""
-        return self._max_point_solution
-
-    def min_point_solution(self):
-        """Returns the min point solution"""
-        return self._min_point_solution

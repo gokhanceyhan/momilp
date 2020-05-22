@@ -334,6 +334,7 @@ class OptimizationStatus(Enum):
     OPTIMAL = "optimal"
     FEASIBLE = "feasible"
     INFEASIBLE = "infeasible"
+    SOLUTION_UNAVAILABLE = "solution unavailable"
     UNDEFINED = "undefined"
 
 

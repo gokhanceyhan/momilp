@@ -35,23 +35,11 @@ class GurobiMomilpModelTest(TestCase):
         self.assert_that(model.Z(), has_key("Set2"))
         for objective_name, objective_range in model.objective_name_2_range().items():
             if objective_name == "Set0":
-                self.assert_that(objective_range.min_point_solution().point().values(), is_([0.0, 0.0, 0.0]))
-                self.assert_that(objective_range.max_point_solution().point().values(), is_([10.0, 7.0, 6.0]))
-                expected_y_bar = [
-                    1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-                self.assert_that(objective_range.max_point_solution().y_bar(), is_(expected_y_bar))
+                self.assert_that(objective_range, is_((0.0, 10.0)))
             if objective_name == "Set1":
-                self.assert_that(objective_range.min_point_solution().point().values(), is_([0.0, 0.0, 0.0]))
-                self.assert_that(objective_range.max_point_solution().point().values(), is_([7.0, 10.0, 7.0]))
-                expected_y_bar = [
-                    0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-                self.assert_that(objective_range.max_point_solution().y_bar(), is_(expected_y_bar))
+                self.assert_that(objective_range, is_((0.0, 10.0)))
             if objective_name == "Set2":
-                self.assert_that(objective_range.min_point_solution().point().values(), is_([0.0, 0.0, 0.0]))
-                self.assert_that(objective_range.max_point_solution().point().values(), is_([7.0, 8.0, 9.0]))
-                expected_y_bar = [
-                    0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0]
-                self.assert_that(objective_range.max_point_solution().y_bar(), is_(expected_y_bar))
+                self.assert_that(objective_range, is_((0.0, 9.0)))
         for objective_name in model.objective_index_2_name().values():
             objective_scaler = model.objective_scaler(objective_name)
             if objective_name == "Set0":

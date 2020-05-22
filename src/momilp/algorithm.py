@@ -54,18 +54,22 @@ class AlgorithmFactory:
     @staticmethod
     def _create_cone_based_search_algorithm(
             model_file, working_dir, dichotomic_search_rel_tol=1e-6, discrete_objective_indices=None, 
-            explore_decision_space=False, max_num_iterations=None, rel_coverage_gap=0.0):
+            explore_decision_space=False, max_num_iterations=None, obj_index_2_range=None, rel_coverage_gap=0.0, 
+            search_num_threads=None, search_time_limit_in_seconds=None):
         """Creates and returns the cone-based search algorithm"""
         return ConeBasedSearchAlgorithm(
             model_file, working_dir, dichotomic_search_rel_tol=dichotomic_search_rel_tol, 
             discrete_objective_indices=discrete_objective_indices, explore_decision_space=explore_decision_space, 
-            max_num_iterations=max_num_iterations, rel_coverage_gap=rel_coverage_gap)
+            max_num_iterations=max_num_iterations, obj_index_2_range=obj_index_2_range, 
+            rel_coverage_gap=rel_coverage_gap, search_num_threads=search_num_threads, 
+            search_time_limit_in_seconds=search_time_limit_in_seconds)
 
     @staticmethod
     def create(
             model_file, working_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, 
             dichotomic_search_rel_tol=1e-6, discrete_objective_indices=None, explore_decision_space=False, 
-            max_num_iterations=None, rel_coverage_gap=0.0):
+            max_num_iterations=None, obj_index_2_range=None, rel_coverage_gap=0.0, search_num_threads=None, 
+            search_time_limit_in_seconds=None):
         """Creates an algorithm"""
         model = read(model_file)
         num_obj = model.num_obj
@@ -83,7 +87,9 @@ class AlgorithmFactory:
             return AlgorithmFactory._create_cone_based_search_algorithm(
                 model_file, working_dir, dichotomic_search_rel_tol=dichotomic_search_rel_tol, 
                 discrete_objective_indices=discrete_objective_indices, explore_decision_space=explore_decision_space, 
-                max_num_iterations=max_num_iterations, rel_coverage_gap=rel_coverage_gap)
+                max_num_iterations=max_num_iterations, obj_index_2_range=obj_index_2_range, 
+                rel_coverage_gap=rel_coverage_gap, search_num_threads=search_num_threads, 
+                search_time_limit_in_seconds=search_time_limit_in_seconds)
 
 
 class ConeBasedSearchAlgorithm(AbstractAlgorithm):
@@ -95,7 +101,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
 
     def __init__(
             self, model_file, working_dir, dichotomic_search_rel_tol=1e-6, discrete_objective_indices=None, 
-            explore_decision_space=False, max_num_iterations=None, rel_coverage_gap=0.0):
+            explore_decision_space=False, max_num_iterations=None, obj_index_2_range=None, rel_coverage_gap=0.0, 
+            search_num_threads=None, search_time_limit_in_seconds=None):
         self._dichotomic_search_rel_tol = dichotomic_search_rel_tol
         self._discrete_objective_indices = discrete_objective_indices or []
         self._dominance_filter = None
@@ -108,9 +115,12 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         self._momilp_model = None
         self._num_milp_solved = 0
         self._objective_index_2_priority = {}
+        self._obj_index_2_range = obj_index_2_range or {}
         self._primary_objective_index = None
         self._projected_space_criterion_index_2_criterion_index = {}
         self._rel_coverage_gap = rel_coverage_gap
+        self._search_num_threads = search_num_threads
+        self._search_time_limit_in_seconds = search_time_limit_in_seconds
         self._state = None
         self._x_obj_name = None
         self._y_obj_name = None
@@ -145,7 +155,9 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
     def _create_momilp_model(self):
         """Creates and returns a momilp model"""
         return GurobiMomilpModel(
-            self._model_file, discrete_objective_indices=self._discrete_objective_indices)
+            self._model_file, discrete_objective_indices=self._discrete_objective_indices, 
+            num_threads=self._search_num_threads, obj_index_2_range=self._obj_index_2_range, 
+            time_limit_in_seconds=self._search_time_limit_in_seconds)
 
     def _create_positive_quadrant_convex_cone(self):
         """Returns a convex cone corresponding to the positive quadrant"""
