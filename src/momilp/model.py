@@ -89,7 +89,7 @@ class GurobiMomilpModel(AbstractModel):
 
     def __init__(
             self, model_file, discrete_objective_indices=None, log_to_console=False, log_to_file=True, num_obj=None, 
-            num_threads=None, obj_index_2_range=None, time_limit_in_seconds=None):
+            num_threads=None, obj_index_2_range=None, params_file=None, time_limit_in_seconds=None):
         self._constraint_name_2_constraint = {}
         self._discrete_objective_indices = discrete_objective_indices or []
         self._int_var_2_original_lb_and_ub = {}
@@ -108,6 +108,7 @@ class GurobiMomilpModel(AbstractModel):
         self._objective_name_2_scaling_coeff = {}
         self._objective_name_2_scaling_constant = {}
         self._objective_name_2_variable = {}
+        self._params_file = params_file
         self._primary_objective_index = None
         self._pure_integer_problem = None
         self._region_defining_constraint_names = []
@@ -237,6 +238,9 @@ class GurobiMomilpModel(AbstractModel):
             model.Params.Threads = num_threads
         if time_limit_in_seconds:
             model.Params.TimeLimit = time_limit_in_seconds
+        # update the parameters from the external parameters file if any
+        if self._params_file:
+            model.read(self._params_file)
         model.update()
 
     def _validate(self):

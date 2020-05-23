@@ -55,21 +55,23 @@ class AlgorithmFactory:
     def _create_cone_based_search_algorithm(
             model_file, working_dir, dichotomic_search_rel_tol=1e-6, discrete_objective_indices=None, 
             explore_decision_space=False, max_num_iterations=None, obj_index_2_range=None, rel_coverage_gap=0.0, 
-            search_num_threads=None, search_time_limit_in_seconds=None):
+            search_model_params_file=None, search_num_threads=None, search_time_limit_in_seconds=None, 
+            slice_model_params_file=None):
         """Creates and returns the cone-based search algorithm"""
         return ConeBasedSearchAlgorithm(
             model_file, working_dir, dichotomic_search_rel_tol=dichotomic_search_rel_tol, 
             discrete_objective_indices=discrete_objective_indices, explore_decision_space=explore_decision_space, 
             max_num_iterations=max_num_iterations, obj_index_2_range=obj_index_2_range, 
-            rel_coverage_gap=rel_coverage_gap, search_num_threads=search_num_threads, 
-            search_time_limit_in_seconds=search_time_limit_in_seconds)
+            rel_coverage_gap=rel_coverage_gap, search_model_params_file=search_model_params_file, 
+            search_num_threads=search_num_threads, search_time_limit_in_seconds=search_time_limit_in_seconds, 
+            slice_model_params_file=slice_model_params_file)
 
     @staticmethod
     def create(
             model_file, working_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, 
             dichotomic_search_rel_tol=1e-6, discrete_objective_indices=None, explore_decision_space=False, 
-            max_num_iterations=None, obj_index_2_range=None, rel_coverage_gap=0.0, search_num_threads=None, 
-            search_time_limit_in_seconds=None):
+            max_num_iterations=None, obj_index_2_range=None, rel_coverage_gap=0.0, search_model_params_file=None, 
+            search_num_threads=None, search_time_limit_in_seconds=None, slice_model_params_file=None):
         """Creates an algorithm"""
         model = read(model_file)
         num_obj = model.num_obj
@@ -89,7 +91,8 @@ class AlgorithmFactory:
                 discrete_objective_indices=discrete_objective_indices, explore_decision_space=explore_decision_space, 
                 max_num_iterations=max_num_iterations, obj_index_2_range=obj_index_2_range, 
                 rel_coverage_gap=rel_coverage_gap, search_num_threads=search_num_threads, 
-                search_time_limit_in_seconds=search_time_limit_in_seconds)
+                search_time_limit_in_seconds=search_time_limit_in_seconds, 
+                search_model_params_file=search_model_params_file, slice_model_params_file=slice_model_params_file)
 
 
 class ConeBasedSearchAlgorithm(AbstractAlgorithm):
@@ -102,7 +105,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
     def __init__(
             self, model_file, working_dir, dichotomic_search_rel_tol=1e-6, discrete_objective_indices=None, 
             explore_decision_space=False, max_num_iterations=None, obj_index_2_range=None, rel_coverage_gap=0.0, 
-            search_num_threads=None, search_time_limit_in_seconds=None):
+            search_model_params_file=None, search_num_threads=None, search_time_limit_in_seconds=None, 
+            slice_model_params_file=None):
         self._dichotomic_search_rel_tol = dichotomic_search_rel_tol
         self._discrete_objective_indices = discrete_objective_indices or []
         self._dominance_filter = None
@@ -119,8 +123,10 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         self._primary_objective_index = None
         self._projected_space_criterion_index_2_criterion_index = {}
         self._rel_coverage_gap = rel_coverage_gap
+        self._search_model_params_file = search_model_params_file
         self._search_num_threads = search_num_threads
         self._search_time_limit_in_seconds = search_time_limit_in_seconds
+        self._slice_model_params_file = slice_model_params_file
         self._state = None
         self._x_obj_name = None
         self._y_obj_name = None
@@ -152,11 +158,11 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         return TypeConversionUtilities.edge_in_two_dimension_to_edge(
             additional_dim_2_value, edge, self._projected_space_criterion_index_2_criterion_index)
 
-    def _create_momilp_model(self):
+    def _create_momilp_model(self, params_file=None):
         """Creates and returns a momilp model"""
         return GurobiMomilpModel(
             self._model_file, discrete_objective_indices=self._discrete_objective_indices, 
-            num_threads=self._search_num_threads, obj_index_2_range=self._obj_index_2_range, 
+            num_threads=self._search_num_threads, obj_index_2_range=self._obj_index_2_range, params_file=params_file, 
             time_limit_in_seconds=self._search_time_limit_in_seconds)
 
     def _create_positive_quadrant_convex_cone(self):
@@ -213,7 +219,7 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         cone = self._create_positive_quadrant_convex_cone()
         region = SearchRegionInTwoDimension(self._x_obj_name, self._y_obj_name, cone)
         try:
-            search_problem = SearchProblem(self._create_momilp_model())
+            search_problem = SearchProblem(self._create_momilp_model(params_file=self._search_model_params_file))
         except BaseException as e:
             raise RuntimeError(
                 "failed to create the search problem in the initialization of the cone-based search algorithm") from e
@@ -221,7 +227,8 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         # create a slice problem
         try:
             slice_problem = SliceProblem(
-                self._create_momilp_model(), self._projected_space_criterion_index_2_criterion_index, 
+                self._create_momilp_model(params_file=self._slice_model_params_file), 
+                self._projected_space_criterion_index_2_criterion_index, 
                 dichotomic_search_rel_tol=self._dichotomic_search_rel_tol)
         except BaseException as e:
             raise RuntimeError(
