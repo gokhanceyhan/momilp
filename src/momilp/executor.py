@@ -118,7 +118,8 @@ class Executor:
     def __init__(
             self, model_files, dichotomic_search_rel_tol=1e-6, discrete_objective_indices=None, 
             explore_decision_space=True, max_num_iterations=None, obj_index_2_range=None, rel_coverage_gap=0.0, 
-            search_num_threads=None, search_time_limit_in_seconds=None, solver_package=SolverPackage.GUROBI):
+            search_num_threads=None, search_model_params_file=None, search_time_limit_in_seconds=None, 
+            slice_model_params_file=None, solver_package=SolverPackage.GUROBI):
         self._dichotomic_search_rel_tol = dichotomic_search_rel_tol
         self._discrete_objective_indices = discrete_objective_indices
         self._explore_decision_space=explore_decision_space
@@ -126,8 +127,10 @@ class Executor:
         self._model_files = model_files
         self._obj_index_2_range = obj_index_2_range or {}
         self._rel_coverage_gap = rel_coverage_gap
+        self._search_model_params_file = search_model_params_file
         self._search_num_threads = search_num_threads
         self._search_time_limit_in_seconds = search_time_limit_in_seconds
+        self._slice_model_params_file = slice_model_params_file
         self._statistics = []
         if solver_package not in Executor._SUPPORTED_SOLVER_PACKAGES:
             error_message = Executor._UNSUPPORTED_SOLVER_PACKAGE_ERROR_MESSAGE.format(
@@ -194,7 +197,9 @@ class Executor:
                 explore_decision_space=self._explore_decision_space, max_num_iterations=self._max_num_iterations, 
                 obj_index_2_range=self._obj_index_2_range, rel_coverage_gap=self._rel_coverage_gap, 
                 search_num_threads=self._search_num_threads, 
-                search_time_limit_in_seconds=self._search_time_limit_in_seconds)
+                search_time_limit_in_seconds=self._search_time_limit_in_seconds, 
+                search_model_params_file=self._search_model_params_file, 
+                slice_model_params_file=self._slice_model_params_file)
             state = algorithm.run()
             elapsed_time_in_seconds = round(time.time() - start_time, Executor._NUM_DECIMALS_FOR_TIME_IN_SECONDS)
             instance_name = os.path.splitext(os.path.basename(model_file))[0]
@@ -238,6 +243,10 @@ class MomilpSolverApp:
             help="sets the path to the directory where the model files (.lp format) are stored")
         parser.add_argument("-n", "--num-threads", help="sets the number of threads for the milp solver")
         parser.add_argument(
+            "-p", '--search-mip-params', help="sets the '.prm' file for the search problem in the algorithm")
+        parser.add_argument(
+            "-P", '--slice-lp-params', help="sets the '.prm' file for the slice problem in the algorithm")
+        parser.add_argument(
             "-s", "--solver-package", choices=[SolverPackage.GUROBI.value], help="sets the solver package to use")
         parser.add_argument("-t", "--time-limit", help="sets the time limit in seconds for the milp solver")
         parser.add_argument("-w", "--working-dir", help="sets the path to the working directory")
@@ -258,9 +267,12 @@ class MomilpSolverApp:
         max_num_iterations = int(args.iteration_limit) if args.iteration_limit else None
         num_threads = int(args.num_threads) if args.num_threads else None
         time_limit_in_seconds = int(args.time_limit) if args.time_limit else None
+        search_model_params_file = args.search_mip_params
+        slice_model_params_file = args.slice_lp_params
         executor = Executor(
             model_files, dichotomic_search_rel_tol=beta, discrete_objective_indices=discrete_objective_indices, 
             explore_decision_space=explore_decision_space, max_num_iterations=max_num_iterations, 
-            rel_coverage_gap=alpha, solver_package=SolverPackage(args.solver_package), search_num_threads=num_threads, 
-            search_time_limit_in_seconds=time_limit_in_seconds)
+            rel_coverage_gap=alpha, search_model_params_file=search_model_params_file, search_num_threads=num_threads, 
+            search_time_limit_in_seconds=time_limit_in_seconds, slice_model_params_file=slice_model_params_file, 
+            solver_package=SolverPackage(args.solver_package))
         executor.execute(args.working_dir)

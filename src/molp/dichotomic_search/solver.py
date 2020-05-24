@@ -18,12 +18,12 @@ class BolpDichotomicSearchWithGurobiSolver(MolpSolver):
 
     """Implements bi-objective linear programming problem solver by applying dichotomic search with Gurobi solver"""
 
-    def __init__(self, model, log_to_console=False, log_to_file=True, obj_rel_tol=1e-6):
+    def __init__(self, model, obj_rel_tol=1e-6):
         super(BolpDichotomicSearchWithGurobiSolver, self).__init__(model)
         self._extreme_supported_nondominated_points = []
         self._obj_rel_tol = obj_rel_tol
         self._point_pairs_to_check = []
-        self._set_model_params(log_to_console=log_to_console, log_to_file=log_to_file)
+        self._set_model_params()
         self._validate()
         self._initialize()
 
@@ -75,18 +75,16 @@ class BolpDichotomicSearchWithGurobiSolver(MolpSolver):
             model.setParam("ObjNumber", obj_index)
             model.setAttr("ObjNWeight", weight)
 
-    def _set_model_params(self, feas_tol=1e-9, log_to_console=False, log_to_file=True, opt_tol=1e-9):
+    def _set_model_params(self, obj_n_abs_tol=0):
         """Sets the model parameters
         
-        NOTE: Default feasibility or optimality tolerances of Gurobi (1e-6) are leading to incorrect nd set when the 
-        objective functions are scaled"""
+        NOTE: The value of the 'ObjNAbsTol' parameter indicates the amount by which a fixed variable's reduced cost is 
+        allowed to violate dual feasibility, whereas the 'ObjNRelTol' parameter is simply ignored 
+        (https://www.gurobi.com/documentation/9.0/refman/working_with_multiple_obje.html)"""
         model = self._model
-        if not log_to_console:
-            model.setParam("LogToConsole", 0)
-        if not log_to_file:
-            model.setParam("LogFile", "")
-        model.Params.FeasibilityTol = feas_tol
-        model.Params.OptimalityTol = opt_tol
+        for index in range(2):
+            model.setParam("ObjNumber", index)
+            model.setAttr("ObjNAbsTol", obj_n_abs_tol)
         model.update()
 
     @staticmethod
