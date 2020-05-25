@@ -465,12 +465,16 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         if frontier.singleton():
             # we need to check if the point is a weakly nondominated, but a dominated point. This is needed when the 
             # generated point is on the boundary of the search region
-            if not DominanceRules.PointToPointSet.dominated(
-                    selected_point_solution.point(), 
-                    [nd_point.point() for nd_point in state.solution_state().nondominated_points()]):
+            dominated_by_prev_nd_point = DominanceRules.PointToPointSet.dominated(
+                selected_point_solution.point(), 
+                [nd_point.point() for nd_point in state.solution_state().nondominated_points()])
+            dominated_by_prev_nd_edge = DominanceRules.PointToEdgeSet.dominated(
+                selected_point_solution.point(), 
+                [nd_edge.edge() for nd_edge in state.solution_state().nondominated_edges()], 
+                edge_dimensions_with_constant_value=[self._primary_objective_index])
+            if not dominated_by_prev_nd_point and not dominated_by_prev_nd_edge:
                 state.solution_state().add_nondominated_point(selected_point_solution)
                 state.solution_state().add_efficient_integer_vector(selected_point_solution.y_bar())
-            # MOMILP_TO_DO: MOMILP-8: we need to check against to the nondominated edge set as well
         else:
             # MOMILP_TO_DO: MOMILP-8: we need to check against to the nondominated edge set and eliminate the dominated 
             # ones
