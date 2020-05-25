@@ -6,9 +6,9 @@ import numpy as np
 from gurobipy import GRB, Model, QuadExpr
 from time import time
 
-from src.common.elements import EdgeInTwoDimension, FrontierInTwoDimension, Point, PointInTwoDimension
+from src.common.elements import Edge, EdgeInTwoDimension, FrontierInTwoDimension, Point, PointInTwoDimension
 from src.molp.utilities import ModelQueryUtilities as molp_query_utilities
-from src.momilp.utilities import ConstraintGenerationUtilities
+from src.momilp.utilities import ConstraintGenerationUtilities, TypeConversionUtilities
 
 
 class DominanceModel:
@@ -285,6 +285,43 @@ class DominanceRules:
             if point.z1() > edge.right_point().z1():
                 return False
             return not (np.dot(point.values(), edge.normal_vector()) >= edge.edge_value())
+
+    class PointToEdgeSet:
+
+        """Implements the rules when comparing a point to a set of edges"""
+
+        @staticmethod
+        def dominated(point, edges, edge_dimensions_with_constant_value=None):
+            """Returns True if the point is dominated by any edge, otherwise False"""
+            if not edges:
+                return False
+            assert isinstance(point, Point)
+            p_dim = len(point.values())
+            assert all([isinstance(e, Edge) and len(e.start_point().values()) == p_dim for e in edges])
+            edge_dimensions_with_constant_value = edge_dimensions_with_constant_value or []
+            edge_dimensions = list(
+                set(range(len(edges[0].start_point().values()))) - set(edge_dimensions_with_constant_value))
+            assert len(edge_dimensions) == 2, "dimension of edges must be at exactly 2"
+            for edge in edges:
+                if any(
+                        [point.values()[d] > edge.start_point().values()[d] for d in 
+                         edge_dimensions_with_constant_value]):
+                    continue
+                edge_in_two_dimension = TypeConversionUtilities.edge_to_edge_in_two_dimension(edge_dimensions, edge)
+                point_in_two_dimension = TypeConversionUtilities.point_to_point_in_two_dimension(edge_dimensions, point)
+                if DominanceRules.PointToEdge.dominated(point_in_two_dimension, edge_in_two_dimension):
+                    return True
+            return False
+
+        @staticmethod
+        def dominated_in_two_dimension(point, edges):
+            """Returns True if the point is dominated by any edge, otherwise False"""
+            assert isinstance(point, PointInTwoDimension)
+            assert all([isinstance(e, EdgeInTwoDimension) for e in edges])
+            for edge in edges:
+                if DominanceRules.PointToEdge.dominated(point, edge):
+                    return True
+            return False
 
     class PointToFrontier:
 
