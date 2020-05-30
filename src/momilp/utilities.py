@@ -225,10 +225,11 @@ class ReportCreator:
 
     _CONNECTED_POINT_INDICATOR_COLUMN_NAME = "connected"
     _FILE_NAME_TEMPLATE = "{instance_name}_{report_name}.csv"
+    _INTEGER_VECTOR_COLUMN_NAME = "y"
     _ITERATION_STATISTICS_REPORT_NAME = "stats"
     _NONDOMINATED_SET_REPORT_NAME = "nds"
 
-    def __init__(self, momilp_model, state, instance_name, output_dir):
+    def __init__(self, momilp_model, state, instance_name, output_dir, write_integer_vectors=False):
         self._instance_name = instance_name
         self._iteration_statistics_df = None
         self._momilp_model = momilp_model
@@ -236,6 +237,7 @@ class ReportCreator:
         self._nondominated_points_df = None
         self._output_dir = output_dir
         self._state = state
+        self._write_integer_vectors = write_integer_vectors
 
     def _restore_original_values(self, values):
         """Restores the original values of the criteria by using the objective inverse scalers"""
@@ -253,30 +255,35 @@ class ReportCreator:
         """Sets the data frame of the nondominated edges"""
         solution_state = self._state.solution_state()
         obj_index_2_name = self._momilp_model.objective_index_2_name()
-        edges = [nondominated_edge.edge() for nondominated_edge in solution_state.nondominated_edges()]
-        updated_edges = []
-        for edge in edges:
+        nd_edges = solution_state.nondominated_edges()
+        for nd_edge in nd_edges:
+            edge = nd_edge.edge()
             start_point_values = self._restore_original_values(edge.start_point().values())
             end_point_values = self._restore_original_values(edge.end_point().values())
             # we need to switch the start and end points
             start_point, end_point = Point(end_point_values), Point(start_point_values)
             start_inclusive, end_inclusive = edge.end_inclusive(), edge.start_inclusive()
             updated_edge = Edge(start_point, end_point, end_inclusive=end_inclusive, start_inclusive=start_inclusive)
-            updated_edges.append(updated_edge)
-        sorted_edges = self._sort_nondominated_edges(updated_edges)
+            nd_edge.set_edge(updated_edge)
+        sorted_nd_edges = self._sort_nondominated_edges(nd_edges)
         records = []
-        for index, edge in enumerate(sorted_edges):
+        for index, nd_edge in enumerate(sorted_nd_edges):
+            edge = nd_edge.edge()
             start_point_values = edge.start_point().values()
             start_point_column_name_2_value = {
                 obj_index_2_name[index]: value for index, value in enumerate(start_point_values)}
             start_point_column_name_2_value[ReportCreator._CONNECTED_POINT_INDICATOR_COLUMN_NAME] = 1
+            if self._write_integer_vectors:
+                start_point_column_name_2_value[ReportCreator._INTEGER_VECTOR_COLUMN_NAME] = nd_edge.y_bar()
             records.append(start_point_column_name_2_value)
             end_point_values = edge.end_point().values()
             end_point_column_name_2_value = {
                 obj_index_2_name[index]: value for index, value in enumerate(end_point_values)}
-            connected = 1 if index < len(sorted_edges) - 1 and all(np.isclose(
-                end_point_values, sorted_edges[index+1].start_point().values())) else 0
+            connected = 1 if index < len(sorted_nd_edges) - 1 and all(np.isclose(
+                end_point_values, sorted_nd_edges[index+1].edge().start_point().values())) else 0
             end_point_column_name_2_value[ReportCreator._CONNECTED_POINT_INDICATOR_COLUMN_NAME] = connected
+            if self._write_integer_vectors:
+                end_point_column_name_2_value[ReportCreator._INTEGER_VECTOR_COLUMN_NAME] = nd_edge.y_bar()
             if not connected:
                 records.append(end_point_column_name_2_value)
         self._nondominated_edges_df = pd.DataFrame.from_records(records) if records else \
@@ -286,18 +293,19 @@ class ReportCreator:
         """Sets the data frame of the nondominated points"""
         solution_state = self._state.solution_state()
         obj_index_2_name = self._momilp_model.objective_index_2_name()
-        points = [nondominated_point.point() for nondominated_point in solution_state.nondominated_points()]
-        updated_points = []
-        for point in points:
-            values = self._restore_original_values(point.values())
+        nd_points = solution_state.nondominated_points()
+        for nd_point in nd_points:
+            values = self._restore_original_values(nd_point.point().values())
             updated_point = Point(values)
-            updated_points.append(updated_point)
-        sorted_points = self._sort_nondominated_points(updated_points)
+            nd_point.set_point(updated_point)
+        sorted_nd_points = self._sort_nondominated_points(nd_points)
         records = []
-        for point in sorted_points:
-            values = point.values()
+        for nd_point in sorted_nd_points:
+            values = nd_point.point().values()
             column_name_2_value = {obj_index_2_name[index]: value for index, value in enumerate(values)}
             column_name_2_value[ReportCreator._CONNECTED_POINT_INDICATOR_COLUMN_NAME] = 0
+            if self._write_integer_vectors:
+                column_name_2_value[ReportCreator._INTEGER_VECTOR_COLUMN_NAME] = nd_point.y_bar()
             records.append(column_name_2_value)
         self._nondominated_points_df = pd.DataFrame.from_records(records) if records else \
             pd.DataFrame(columns=obj_index_2_name.values())
@@ -310,7 +318,7 @@ class ReportCreator:
 
         def sort_function(edge):
             """Nondominated edge sorting function"""
-            return tuple([model_sense * v for v in edge.start_point().values()])
+            return tuple([model_sense * v for v in edge.edge().start_point().values()])
         
         return sorted(edges, key=sort_function)
 
@@ -322,7 +330,7 @@ class ReportCreator:
 
         def sort_function(point):
             """Nondominated point sorting function"""
-            return tuple([model_sense * v for v in point.values()])
+            return tuple([model_sense * v for v in point.point().values()])
         
         return sorted(points, key=sort_function)
 

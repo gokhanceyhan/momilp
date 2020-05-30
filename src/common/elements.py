@@ -205,6 +205,10 @@ class EdgeSolution(Solution):
         """Returns the edge"""
         return self._edge
 
+    def set_edge(self, edge):
+        """Sets the edge"""
+        self._edge = edge
+
 
 class FrontierEdgeInTwoDimension(EdgeInTwoDimension):
 
@@ -420,6 +424,9 @@ class PointSolution(Solution):
         """Returns the point"""
         return self._point
 
+    def set_point(self, point):
+        """Sets the point"""
+        self._point = point
 
 class RayInTwoDimension:
 

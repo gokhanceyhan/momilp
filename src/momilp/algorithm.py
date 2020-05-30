@@ -379,15 +379,17 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
 
     def _solve_slice_problem(self, iteration_index, region, selected_point_solution):
         """Solves the slice problem and returns the result"""
+        # create a slice problem result from the selected solution. If slice problem is infeasible 
+        # (which is supposed to be always feasible, but may be infeasible due to tolerances used), use this result
         start = time()
+        projected_space_criterion_indices = self._projected_space_criterion_index_2_criterion_index.values()
+        point_in_two_dimension = TypeConversionUtilities.point_to_point_in_two_dimension(
+            projected_space_criterion_indices, selected_point_solution.point())
+        frontier = FrontierInTwoDimension(point=point_in_two_dimension)
+        frontier_solution = FrontierSolution(frontier, selected_point_solution.y_bar())
+        ideal_point = selected_point_solution.point()
+        result = SliceProblemResult(frontier_solution, ideal_point)
         if self._momilp_model.discrete_nondominated_set():
-            projected_space_criterion_indices = self._projected_space_criterion_index_2_criterion_index.values()
-            point_in_two_dimension = TypeConversionUtilities.point_to_point_in_two_dimension(
-                projected_space_criterion_indices, selected_point_solution.point())
-            frontier = FrontierInTwoDimension(point=point_in_two_dimension)
-            frontier_solution = FrontierSolution(frontier, selected_point_solution.y_bar())
-            ideal_point = selected_point_solution.point()
-            result = SliceProblemResult(frontier_solution, ideal_point)
             end = time()
             self._elapsed_time_in_seconds_for_slice_problem = end - start
             return result
@@ -399,13 +401,12 @@ class ConeBasedSearchAlgorithm(AbstractAlgorithm):
         try:
             result = slice_problem.solve()
         except BaseException as e:
-            raise RuntimeError(
-                "failed to solve the slice problem for point solution '%s' in region '%s' at iteration '%s'" % (
-                    selected_point_solution, region, iteration_index)) from e
-        else:
-            end = time()
-            self._elapsed_time_in_seconds_for_slice_problem = end - start
-            return result
+            logging.info(
+                "failed to solve the slice problem for point solution '%s' in region '%s' at iteration '%s', details: "
+                "'%s'" % (selected_point_solution, region, iteration_index, str(e)))        
+        end = time()
+        self._elapsed_time_in_seconds_for_slice_problem = end - start
+        return result
 
     def _update_lower_bounds(self, reference_point, search_problems, selected_search_problem_index):
         """Updates the lower bounds of the search problems to eliminate the dominated regions by the reference point"""
