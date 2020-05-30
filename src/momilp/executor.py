@@ -119,7 +119,7 @@ class Executor:
             self, model_files, dichotomic_search_rel_tol=1e-6, discrete_objective_indices=None, 
             explore_decision_space=True, max_num_iterations=None, obj_index_2_range=None, rel_coverage_gap=0.0, 
             search_num_threads=None, search_model_params_file=None, search_time_limit_in_seconds=None, 
-            slice_model_params_file=None, solver_package=SolverPackage.GUROBI):
+            slice_model_params_file=None, solver_package=SolverPackage.GUROBI, write_integer_vectors=False):
         self._dichotomic_search_rel_tol = dichotomic_search_rel_tol
         self._discrete_objective_indices = discrete_objective_indices
         self._explore_decision_space=explore_decision_space
@@ -137,6 +137,7 @@ class Executor:
                 solver=solver_package, supported_solvers=Executor._SUPPORTED_SOLVER_PACKAGES)
             raise ValueError(error_message)
         self._solver_package = solver_package
+        self._write_integer_vectors = write_integer_vectors
 
     def _collect_statistics(self, algorithm, elapsed_time_in_seconds, instance_name, state):
         """Collects the statistics for the algorithm and the instance"""
@@ -203,7 +204,9 @@ class Executor:
             state = algorithm.run()
             elapsed_time_in_seconds = round(time.time() - start_time, Executor._NUM_DECIMALS_FOR_TIME_IN_SECONDS)
             instance_name = os.path.splitext(os.path.basename(model_file))[0]
-            report_creator = ReportCreator(algorithm.momilp_model(), state, instance_name, working_dir)
+            report_creator = ReportCreator(
+                algorithm.momilp_model(), state, instance_name, working_dir, 
+                write_integer_vectors=self._write_integer_vectors)
             report_creator.create()
             self._collect_statistics(algorithm, elapsed_time_in_seconds, instance_name, state)
         self._export_statistics(working_dir)
@@ -250,6 +253,8 @@ class MomilpSolverApp:
             "-s", "--solver-package", choices=[SolverPackage.GUROBI.value], help="sets the solver package to use")
         parser.add_argument("-t", "--time-limit", help="sets the time limit in seconds for the milp solver")
         parser.add_argument("-w", "--working-dir", help="sets the path to the working directory")
+        parser.add_argument(
+            "-y", "--write-integer-vectors", action='store_true', help="writes integer vectors in the output file")
         return parser.parse_args()
 
     def run(self):
@@ -269,10 +274,11 @@ class MomilpSolverApp:
         time_limit_in_seconds = int(args.time_limit) if args.time_limit else None
         search_model_params_file = args.search_mip_params
         slice_model_params_file = args.slice_lp_params
+        write_integer_vectors = args.write_integer_vectors
         executor = Executor(
             model_files, dichotomic_search_rel_tol=beta, discrete_objective_indices=discrete_objective_indices, 
             explore_decision_space=explore_decision_space, max_num_iterations=max_num_iterations, 
             rel_coverage_gap=alpha, search_model_params_file=search_model_params_file, search_num_threads=num_threads, 
             search_time_limit_in_seconds=time_limit_in_seconds, slice_model_params_file=slice_model_params_file, 
-            solver_package=SolverPackage(args.solver_package))
+            solver_package=SolverPackage(args.solver_package), write_integer_vectors=write_integer_vectors)
         executor.execute(args.working_dir)
