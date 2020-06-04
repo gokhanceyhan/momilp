@@ -12,7 +12,7 @@ class ModelQueryUtilities:
         """Queries the model for a feasible solution, and returns the objective values of the best solution found"""
         status = model.getAttr("Status")
         values = []
-        if status in [GRB.INF_OR_UNBD, GRB.INFEASIBLE, GRB.UNBOUNDED]:
+        if status in [GRB.INF_OR_UNBD, GRB.INFEASIBLE, GRB.UNBOUNDED] or model.SolCount == 0:
             message = "the optimization call for the '%s' model ended with the '%s' status" % (
                     model.getAttr("ModelName"), status)
             if solver_stage:
