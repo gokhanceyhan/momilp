@@ -241,6 +241,12 @@ class GurobiMomilpModel(AbstractModel):
         # update the parameters from the external parameters file if any
         if self._params_file:
             model.read(self._params_file)
+        # split the time limit equally between the objectives
+        total_time_limit = model.Params.timeLimit
+        if total_time_limit is not None:
+            for index in range(self._num_obj):
+                env = model.getMultiobjEnv(index)
+                env.setParam("TimeLimit", total_time_limit / self._num_obj)
         model.update()
 
     def _validate(self):
