@@ -186,7 +186,7 @@ class SearchProblem(Problem):
         if not candidate_result:
             self._result = result
             return self._result
-        if result.status() not in [OptimizationStatus.FEASIBLE, OptimizationStatus.OPTIMAL]:
+        if result.status() == OptimizationStatus.SOLUTION_UNAVAILABLE:
             self._result = candidate_result
             self.clear_candidate_result()
             return self._result

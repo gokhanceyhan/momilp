@@ -161,9 +161,9 @@ class ModelQueryUtilities:
     """Implements model query utilities"""
 
     GUROBI_STATUS_2_OPTIMIZATION_STATUS = {
-        GRB.INF_OR_UNBD: OptimizationStatus.UNDEFINED,
+        GRB.INF_OR_UNBD: OptimizationStatus.INF_OR_UNBOUNDED,
         GRB.INFEASIBLE: OptimizationStatus.INFEASIBLE,
-        GRB.UNBOUNDED: OptimizationStatus.UNDEFINED,
+        GRB.UNBOUNDED: OptimizationStatus.UNBOUNDED,
         GRB.OPTIMAL: OptimizationStatus.OPTIMAL,
         GRB.ITERATION_LIMIT: OptimizationStatus.FEASIBLE,
         GRB.NODE_LIMIT: OptimizationStatus.FEASIBLE,
@@ -175,18 +175,17 @@ class ModelQueryUtilities:
     def query_optimal_solution(
             model, y, raise_error_if_infeasible=False, round_integer_vector_values=True, solver_stage=None):
         """Queries the model for a feasible solution, and returns the best feasible solution if there exists any"""
+        gurobi_status = model.getAttr("Status")
         status = ModelQueryUtilities.GUROBI_STATUS_2_OPTIMIZATION_STATUS.get(
-            model.getAttr("Status"), OptimizationStatus.UNDEFINED)
+            gurobi_status, OptimizationStatus.UNDEFINED)
         if model.SolCount == 0:
             status = OptimizationStatus.SOLUTION_UNAVAILABLE
-        error_message = "the optimization call for the '%s' model ended with the '%s' status" % (
-            model.getAttr("ModelName"), status.value)
+        error_message = "the optimization call for the '%s' model ended with the '%s' optimization status and '%s' " \
+            "Gurobi status" % (model.getAttr("ModelName"), status.value, gurobi_status)
         if solver_stage:
             error_message = " ".join([error_message, "in the '%s' stage" % solver_stage])
         point_solution = None
-        if status == OptimizationStatus.UNDEFINED:
-            raise RuntimeError(error_message)
-        if status in [OptimizationStatus.INFEASIBLE, OptimizationStatus.SOLUTION_UNAVAILABLE]:
+        if status == OptimizationStatus.SOLUTION_UNAVAILABLE:
             if raise_error_if_infeasible:
                 raise RuntimeError(error_message)
             return SearchProblemResult(point_solution, status)
