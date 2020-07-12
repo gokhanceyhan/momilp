@@ -14,10 +14,10 @@ class ModelQueryUtilities:
         values = []
         if status in [GRB.INF_OR_UNBD, GRB.INFEASIBLE, GRB.UNBOUNDED] or model.SolCount == 0:
             message = "the optimization call for the '%s' model ended with the '%s' status" % (
-                    model.getAttr("ModelName"), status)
+                model.getAttr("ModelName"), status)
             if solver_stage:
                 message = " ".join([message, "in the '%s' stage" % solver_stage])
-            if status == GRB.INFEASIBLE and not raise_error_if_infeasible:
+            if not raise_error_if_infeasible:
                 return values, status
             raise RuntimeError(message)
         for i in range(model.getAttr("NumObj")):
