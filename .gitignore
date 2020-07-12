@@ -3,7 +3,6 @@
 *.csv
 *.log
 *.pyc
-*.lp
 *.mps
 *.prm
 *.sol
@@ -13,4 +12,3 @@ momilp_venv/
 .vscode/
 data/
 logs/
-instances/
