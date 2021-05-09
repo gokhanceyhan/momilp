@@ -20,11 +20,11 @@ class ExecutionStatistics:
     """Implements execution statistics of an algorithm on an instance"""
 
     def __init__(
-            self, algorithm_name, instance_name, elapsed_time_in_seconds=0, 
-            elapsed_time_in_seconds_for_dominance_test_problem=0, 
-            elapsed_time_in_seconds_for_search_problem=0, 
-            elapsed_time_in_seconds_for_slice_problem=0, num_dominance_test_model_solved=0, 
-            num_efficient_integer_vectors=0, 
+            self, algorithm_name, instance_name, elapsed_time_in_seconds=0,
+            elapsed_time_in_seconds_for_dominance_test_problem=0,
+            elapsed_time_in_seconds_for_search_problem=0,
+            elapsed_time_in_seconds_for_slice_problem=0, num_dominance_test_model_solved=0,
+            num_efficient_integer_vectors=0,
             num_iterations=0, num_milp_solved=0, num_nd_edges=0, num_nd_points=0):
         self._algorithm_name = algorithm_name
         self._elapsed_time_in_seconds = elapsed_time_in_seconds
@@ -42,7 +42,7 @@ class ExecutionStatistics:
     def algorithm_name(self):
         """Returns the name of the algorithm"""
         return self._algorithm_name
-    
+
     def elapsed_time_in_seconds(self):
         """Returns the elapsed time in seconds"""
         return self._elapsed_time_in_seconds
@@ -116,9 +116,9 @@ class Executor:
         "the solver package is not supported, define the model in one of the '{supported_solvers!s}' solver packages"
 
     def __init__(
-            self, model_files, dichotomic_search_rel_tol=1e-6, discrete_objective_indices=None, 
-            explore_decision_space=True, max_num_iterations=None, obj_index_2_range=None, rel_coverage_gap=0.0, 
-            search_num_threads=None, search_model_params_file=None, search_time_limit_in_seconds=None, 
+            self, model_files, dichotomic_search_rel_tol=1e-6, discrete_objective_indices=None,
+            explore_decision_space=True, max_num_iterations=None, obj_index_2_range=None, rel_coverage_gap=0.0,
+            search_num_threads=None, search_model_params_file=None, search_time_limit_in_seconds=None,
             slice_model_params_file=None, solver_package=SolverPackage.GUROBI, write_integer_vectors=False):
         self._dichotomic_search_rel_tol = dichotomic_search_rel_tol
         self._discrete_objective_indices = discrete_objective_indices
@@ -162,12 +162,12 @@ class Executor:
         num_nd_points = Executor._num_nondominated_points(solution_state)
         num_efficient_integer_vectors = len(solution_state.efficient_integer_vectors())
         statistics = ExecutionStatistics(
-            algorithm_name, instance_name, elapsed_time_in_seconds=elapsed_time_in_seconds, 
+            algorithm_name, instance_name, elapsed_time_in_seconds=elapsed_time_in_seconds,
             elapsed_time_in_seconds_for_dominance_test_problem=elapsed_time_in_seconds_for_dominance_test_problem,
-            elapsed_time_in_seconds_for_search_problem=elapsed_time_in_seconds_for_search_problem, 
-            elapsed_time_in_seconds_for_slice_problem=elapsed_time_in_seconds_for_slice_problem, 
+            elapsed_time_in_seconds_for_search_problem=elapsed_time_in_seconds_for_search_problem,
+            elapsed_time_in_seconds_for_slice_problem=elapsed_time_in_seconds_for_slice_problem,
             num_dominance_test_model_solved=num_dominance_test_model_solved,
-            num_efficient_integer_vectors=num_efficient_integer_vectors, num_iterations=num_iterations, 
+            num_efficient_integer_vectors=num_efficient_integer_vectors, num_iterations=num_iterations,
             num_milp_solved=num_milp_solved, num_nd_edges=num_nd_edges, num_nd_points=num_nd_points)
         self._statistics.append(statistics)
 
@@ -193,19 +193,19 @@ class Executor:
         for model_file in self._model_files:
             start_time = time.time()
             algorithm = AlgorithmFactory.create(
-                model_file, working_dir, dichotomic_search_rel_tol=self._dichotomic_search_rel_tol, 
-                discrete_objective_indices=self._discrete_objective_indices, 
-                explore_decision_space=self._explore_decision_space, max_num_iterations=self._max_num_iterations, 
-                obj_index_2_range=self._obj_index_2_range, rel_coverage_gap=self._rel_coverage_gap, 
-                search_num_threads=self._search_num_threads, 
-                search_time_limit_in_seconds=self._search_time_limit_in_seconds, 
-                search_model_params_file=self._search_model_params_file, 
+                model_file, working_dir, dichotomic_search_rel_tol=self._dichotomic_search_rel_tol,
+                discrete_objective_indices=self._discrete_objective_indices,
+                explore_decision_space=self._explore_decision_space, max_num_iterations=self._max_num_iterations,
+                obj_index_2_range=self._obj_index_2_range, rel_coverage_gap=self._rel_coverage_gap,
+                search_num_threads=self._search_num_threads,
+                search_time_limit_in_seconds=self._search_time_limit_in_seconds,
+                search_model_params_file=self._search_model_params_file,
                 slice_model_params_file=self._slice_model_params_file)
             state = algorithm.run()
             elapsed_time_in_seconds = round(time.time() - start_time, Executor._NUM_DECIMALS_FOR_TIME_IN_SECONDS)
             instance_name = os.path.splitext(os.path.basename(model_file))[0]
             report_creator = ReportCreator(
-                algorithm.momilp_model(), state, instance_name, working_dir, 
+                algorithm.momilp_model(), state, instance_name, working_dir,
                 write_integer_vectors=self._write_integer_vectors)
             report_creator.create()
             self._collect_statistics(algorithm, elapsed_time_in_seconds, instance_name, state)
@@ -234,15 +234,15 @@ class MomilpSolverApp:
             "objective function value is not higher than (1 + beta) of the objective function value of the adjacent "
             "extreme supported points.")
         parser.add_argument(
-            "-d", "--discrete-objective-indices", 
-            help="the list of discrete objective indices in the model file, e.g. '0', or '0, 1, or '0, 1, 2'. This "
+            "-d", "--discrete-objective-indices",
+            help="the list of discrete objective indices in the model file, e.g. '0', or '0, 1', or '0, 1, 2'. This "
             "specifies the objectives that include continuous variables, but can only have finite feasible criterion "
             "set.")
         parser.add_argument(
             "-e", "--explore-decision-space", action='store_true', help="generate all efficient integer vectors")
         parser.add_argument("-i", "--iteration-limit", help="maximum nunmber of iterations to run")
         parser.add_argument(
-            "-m", "--model-file-path", 
+            "-m", "--model-file-path",
             help="sets the path to the directory where the model files (.lp format) are stored")
         parser.add_argument("-n", "--num-threads", help="sets the number of threads for the milp solver")
         parser.add_argument(
@@ -276,9 +276,9 @@ class MomilpSolverApp:
         slice_model_params_file = args.slice_lp_params
         write_integer_vectors = args.write_integer_vectors
         executor = Executor(
-            model_files, dichotomic_search_rel_tol=beta, discrete_objective_indices=discrete_objective_indices, 
-            explore_decision_space=explore_decision_space, max_num_iterations=max_num_iterations, 
-            rel_coverage_gap=alpha, search_model_params_file=search_model_params_file, search_num_threads=num_threads, 
-            search_time_limit_in_seconds=time_limit_in_seconds, slice_model_params_file=slice_model_params_file, 
+            model_files, dichotomic_search_rel_tol=beta, discrete_objective_indices=discrete_objective_indices,
+            explore_decision_space=explore_decision_space, max_num_iterations=max_num_iterations,
+            rel_coverage_gap=alpha, search_model_params_file=search_model_params_file, search_num_threads=num_threads,
+            search_time_limit_in_seconds=time_limit_in_seconds, slice_model_params_file=slice_model_params_file,
             solver_package=SolverPackage(args.solver_package), write_integer_vectors=write_integer_vectors)
         executor.execute(args.working_dir)
