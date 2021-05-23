@@ -336,7 +336,7 @@ class ReportCreator:
     def _to_csv(self, df, report_name):
         """Converts the data frame to CSV file and exports to the output directory"""
         file_name = ReportCreator._FILE_NAME_TEMPLATE.format(instance_name=self._instance_name, report_name=report_name)
-        df.to_csv(os.path.join(self._output_dir, file_name))
+        df.to_csv(os.path.join(self._output_dir, file_name), float_format='%.5f')
 
     def create(self):
         """Creates the reports"""

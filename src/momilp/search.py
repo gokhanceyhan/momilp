@@ -175,7 +175,7 @@ class SearchProblem(Problem):
             self._solved_milp = False
             self._solve_relaxed_problem()
         result = None
-        if self._relaxed_problem_result.status() == OptimizationStatus.INFEASIBLE:
+        if self._relaxed_problem_result and self._relaxed_problem_result.status() == OptimizationStatus.INFEASIBLE:
             point_solution = None
             result = SearchProblemResult(point_solution, OptimizationStatus.INFEASIBLE)
         else:

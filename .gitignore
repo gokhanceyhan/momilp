@@ -12,3 +12,4 @@ momilp_venv/
 .vscode/
 data/
 logs/
+temp/

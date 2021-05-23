@@ -110,7 +110,7 @@ class Executor:
 
     _EXECUTION_STATISTICS_REPORT_FILE_NAME = "summary.csv"
     _MODEL_CLASS_TO_SOLVER_PACKAGE = {Model: SolverPackage.GUROBI}
-    _NUM_DECIMALS_FOR_TIME_IN_SECONDS = 2
+    _NUM_DECIMALS_FOR_TIME_IN_SECONDS = 5
     _SUPPORTED_SOLVER_PACKAGES = [SolverPackage.GUROBI]
     _UNSUPPORTED_SOLVER_PACKAGE_ERROR_MESSAGE = \
         "the solver package is not supported, define the model in one of the '{supported_solvers!s}' solver packages"

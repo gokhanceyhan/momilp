@@ -73,7 +73,7 @@ class IterationStatistics:
 
     def to_dict(self):
         """Returns the dictionary representation of the iteration statistics"""
-        return {k[1:]: round(v, 2) for k, v in self.__dict__.items()}
+        return {k[1:]: round(v, 5) for k, v in self.__dict__.items()}
 
 
 class SolutionState:
