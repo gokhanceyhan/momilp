@@ -139,6 +139,25 @@ class ConeBasedSearchAlgorithmTest(TestCase):
         self.assert_that(num_edges, is_(5))
         self.assert_that(num_points, is_(0))
 
+    def test_paper_ex_2_problem(self):
+        """Tests the algorithm on Example 2 of the paper"""
+        model_file = os.path.join(self._test_data_dir, "paper_ex_2.lp")
+        algorithm = AlgorithmFactory.create(
+            model_file, self._logs_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, 
+            explore_decision_space=True)
+        state = algorithm.run()
+        report_creator = ReportCreator(algorithm.momilp_model(), state, self._instance_name, self._logs_dir)
+        report_creator.create_data_frames()
+        nondominated_points_df = report_creator.nondominated_points_df()
+        nondominated_edges_df = report_creator.nondominated_edges_df()
+        print(nondominated_points_df)
+        print(nondominated_edges_df)
+        num_points = len(state.solution_state().nondominated_points())
+        num_edges = len(state.solution_state().nondominated_edges())
+        # MOMILP_TO_DO: Actual number of nondominated edge is 3 but one edge is represented with its two sub-edges. 
+        self.assert_that(num_edges, is_(4))
+        self.assert_that(num_points, is_(0))
+
     def test_three_obj_linear_programming_problem(self):
         """Tests the algorithm on a three-objective linear program"""
         pass
