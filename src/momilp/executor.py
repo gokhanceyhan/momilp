@@ -1,15 +1,15 @@
 """Implements the executor class to run the momilp solver"""
 
 import argparse
-from enum import Enum
-from gurobipy import Model, read
 import logging
 import os
-import pandas as pd
 import time
+
+import pandas as pd
+from gurobipy import Model, read
+
 from src.common.elements import SolverPackage
 from src.momilp.algorithm import AlgorithmFactory
-from src.momilp.model import GurobiMomilpModel
 from src.momilp.utilities import ReportCreator
 
 logging.getLogger().setLevel(logging.INFO)
@@ -122,7 +122,7 @@ class Executor:
             slice_model_params_file=None, solver_package=SolverPackage.GUROBI, write_integer_vectors=False):
         self._dichotomic_search_rel_tol = dichotomic_search_rel_tol
         self._discrete_objective_indices = discrete_objective_indices
-        self._explore_decision_space=explore_decision_space
+        self._explore_decision_space = explore_decision_space
         self._max_num_iterations = max_num_iterations
         self._model_files = model_files
         self._obj_index_2_range = obj_index_2_range or {}
