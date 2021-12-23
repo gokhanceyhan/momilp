@@ -17,7 +17,15 @@ class HypervolumeCalculatorApp:
 
     def _parse_args(self):
         """Parses and returns the arguments"""
-        parser = argparse.ArgumentParser(description="hypervolume calculator app")
+        description = """
+        A hypervolume calculator app. Takes a nondominated set and returns the dominated area of the unit square that 
+        represents the scaled objective function space. The input file names should be either instance_number.csv 
+        instance_number.txt, as in from Boland et al. (2015) or as generated from our momilp solver app.
+
+        The file must contain 3 columns: First two columns show objective values of points and the last column takes 
+        binary values, 1 if the successive points are connected, 0 otherwise.
+        """
+        parser = argparse.ArgumentParser(description=description)
         parser.add_argument(
             "-i", "--input-dir", help="sets the path to the directory that contains the input files")
         parser.add_argument(
@@ -26,6 +34,12 @@ class HypervolumeCalculatorApp:
             "-o", "--output-file-path", help="sets the path to the generated results csv file")
         parser.add_argument(
             "-s", "--model-sense", help="-1 for maximization problem, 1 for minimization problem")
+        parser.add_argument(
+            "-b", "--boland-nd-set", help="sets if the input file is taken from Boland et al. (2015)", 
+            action="store_true")
+        parser.add_argument(
+            "-m", "--momilp-solver-nd-set", help="sets if the input file is generated from our momilp solver app", 
+            action="store_true")
         return parser.parse_args()
 
     def run(self):
@@ -44,17 +58,23 @@ class HypervolumeCalculatorApp:
             if file_type == 'csv':
                 df = pd.read_csv(os.path.join(input_dir, file_path))
 
-                # format input from CBSA
-                df = df.drop('z_0', axis=1)
-                df = df[['z_1', 'z_2', 'connected']]
-                instance_index = int(file_path.split('_')[-2].split('dat')[0])
+                # format input from momilp solver app
+                if args.momilp_solver_nd_set:
+                    df = df.drop('z_0', axis=1)
+                    df = df[['z_1', 'z_2', 'connected']]
+                    instance_index = int(file_path.split('_')[-2].split('dat')[0])
+                else:
+                    instance_index = int(file_path.split('.csv')[0])
                 
             elif file_type == 'txt':
                 df = pd.read_csv(os.path.join(input_dir, file_path), sep=' ', header=None)
                 
                 # format input from Boland et al. (2015)
-                df = df.iloc[:, :3]
-                instance_index = int(file_path.split('out')[0])
+                if args.boland_nd_set:
+                    df = df.iloc[:, :3]
+                    instance_index = int(file_path.split('out')[0])
+                else:
+                    instance_index = int(file_path.split('.txt')[0])
 
             else:
                 raise ValueError("unsupported input file type")
