@@ -47,14 +47,14 @@ class HypervolumeCalculatorApp:
                 # format input from CBSA
                 df = df.drop('z_0', axis=1)
                 df = df[['z_1', 'z_2', 'connected']]
-                instance_index = file_path.split('_')[-2].split('dat')[0]
+                instance_index = int(file_path.split('_')[-2].split('dat')[0])
                 
             elif file_type == 'txt':
                 df = pd.read_csv(os.path.join(input_dir, file_path), sep=' ', header=None)
                 
                 # format input from Boland et al. (2015)
                 df = df.iloc[:, :3]
-                instance_index = file_path.split('out')[0]
+                instance_index = int(file_path.split('out')[0])
 
             else:
                 raise ValueError("unsupported input file type")
