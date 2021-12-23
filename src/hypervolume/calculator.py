@@ -15,6 +15,7 @@ class HypervolumeCalculator:
         # sort in the ascending order of first 'z1', then 'z2'
         df = df.sort_values(by=["z1", "z2"])
 
+        assert df['z1'].max() > df['z1'].min() and df['z2'].max() > df['z2'].min(), "the set contains dominated points"
         # apply min-max scaling
         df['z1'] = (df['z1'] - df['z1'].min()) / (df['z1'].max() - df['z1'].min())
         df['z2'] = (df['z2'] - df['z2'].min()) / (df['z2'].max() - df['z2'].min())
@@ -38,6 +39,11 @@ class HypervolumeCalculator:
         model_sense: -1 for maximization problem and 1 for minimization problem
         
         """
+        if len(df) == 0:
+            return 0
+        if len(df) == 1:
+            return 1
+        
         df = self._preprocess(df)
 
         hyper_volume = 0.0
