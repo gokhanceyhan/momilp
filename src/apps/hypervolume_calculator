@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+
+"""Implements the script to run the hyypervolume calculator"""
+
+from src.hypervolume.executor import HypervolumeCalculatorApp
+
+HypervolumeCalculatorApp().run()
