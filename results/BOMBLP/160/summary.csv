@@ -1,0 +1,6 @@
+,algorithm,instance,iter,nd_edges,nd_points,num_dom_lp,num_milp,time (sec),time_dom_test (sec),time_search (sec),time_slice (sec),y_eff
+0,ConeBasedSearchAlgorithm,momilp_3obj_160con_80int_80bin_16dat,302,1231,0,1533,1663,349.03,1.13,322.97,22.8,117
+1,ConeBasedSearchAlgorithm,momilp_3obj_160con_80int_80bin_17dat,308,1193,1,2049,1631,356.11,1.57,328.7,23.54,110
+2,ConeBasedSearchAlgorithm,momilp_3obj_160con_80int_80bin_19dat,536,2115,0,3126,2843,676.64,3.43,629.34,40.48,184
+3,ConeBasedSearchAlgorithm,momilp_3obj_160con_80int_80bin_20dat,203,1242,1,580,1015,222.67,0.27,201.71,19.31,99
+4,ConeBasedSearchAlgorithm,momilp_3obj_160con_80int_80bin_18dat,337,1231,1,3200,1582,296.0,3.0,268.51,21.82,103

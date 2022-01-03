@@ -1,0 +1,8 @@
+,average_num_tabu_constraints,elapsed_time_in_seconds,elapsed_time_in_seconds_for_search_problem,elapsed_time_in_seconds_for_slice_problem,num_milp_solved,num_search_problems
+0,1.0,0.01,0.01,0.0,1,2
+1,1.67,0.05,0.04,0.0,2,3
+2,3.0,0.01,0.01,0.0,1,2
+3,5.0,0.01,0.01,0.0,2,2
+4,6.0,0.03,0.03,0.0,2,2
+5,6.5,0.02,0.02,0.0,2,2
+6,7.0,0.02,0.01,0.0,1,2

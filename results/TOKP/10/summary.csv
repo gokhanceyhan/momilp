@@ -1,0 +1,11 @@
+,algorithm,instance,iter,nd_edges,nd_points,num_dom_lp,num_milp,time (sec),time_dom_test (sec),time_search (sec),time_slice (sec),y_eff
+0,ConeBasedSearchAlgorithm,momilp_3obj_1con_10int_10bin_KP_p-3_n-10_ins-3,8,0,8,0,15,0.43,0,0.34,0.0,8
+1,ConeBasedSearchAlgorithm,momilp_3obj_1con_10int_10bin_KP_p-3_n-10_ins-7,5,0,5,0,9,0.23,0,0.11,0.0,5
+2,ConeBasedSearchAlgorithm,momilp_3obj_1con_10int_10bin_KP_p-3_n-10_ins-6,7,0,7,0,13,0.29,0,0.19,0.0,7
+3,ConeBasedSearchAlgorithm,momilp_3obj_1con_10int_10bin_KP_p-3_n-10_ins-2,19,0,19,0,36,0.78,0,0.65,0.0,19
+4,ConeBasedSearchAlgorithm,momilp_3obj_1con_10int_10bin_KP_p-3_n-10_ins-9,9,0,9,0,17,0.36,0,0.23,0.0,9
+5,ConeBasedSearchAlgorithm,momilp_3obj_1con_10int_10bin_KP_p-3_n-10_ins-10,6,0,6,0,11,0.4,0,0.25,0.0,6
+6,ConeBasedSearchAlgorithm,momilp_3obj_1con_10int_10bin_KP_p-3_n-10_ins-8,7,0,7,0,13,0.73,0,0.42,0.0,7
+7,ConeBasedSearchAlgorithm,momilp_3obj_1con_10int_10bin_KP_p-3_n-10_ins-5,25,0,25,0,48,1.56,0,1.37,0.0,25
+8,ConeBasedSearchAlgorithm,momilp_3obj_1con_10int_10bin_KP_p-3_n-10_ins-1,7,0,7,0,13,0.33,0,0.12,0.0,7
+9,ConeBasedSearchAlgorithm,momilp_3obj_1con_10int_10bin_KP_p-3_n-10_ins-4,5,0,5,0,9,0.18,0,0.05,0.0,5

@@ -1,0 +1,11 @@
+,algorithm,instance,iter,nd_edges,nd_points,num_dom_lp,num_milp,time (sec),time_dom_test (sec),time_search (sec),time_slice (sec),y_eff
+0,ConeBasedSearchAlgorithm,momilp_3obj_1con_50int_50bin_KP_p-3_n-50_ins-2,202,0,202,0,403,57.16,0,56.27,0.01,202
+1,ConeBasedSearchAlgorithm,momilp_3obj_1con_50int_50bin_KP_p-3_n-50_ins-6,803,0,803,0,1598,258.1,0,252.94,0.03,803
+2,ConeBasedSearchAlgorithm,momilp_3obj_1con_50int_50bin_KP_p-3_n-50_ins-7,519,0,519,0,1035,183.0,0,180.55,0.02,519
+3,ConeBasedSearchAlgorithm,momilp_3obj_1con_50int_50bin_KP_p-3_n-50_ins-3,530,0,530,0,1063,137.18,0,134.58,0.02,530
+4,ConeBasedSearchAlgorithm,momilp_3obj_1con_50int_50bin_KP_p-3_n-50_ins-8,178,0,178,0,355,38.1,0,37.45,0.01,178
+5,ConeBasedSearchAlgorithm,momilp_3obj_1con_50int_50bin_KP_p-3_n-50_ins-9,361,0,361,0,722,94.42,0,92.76,0.01,361
+6,ConeBasedSearchAlgorithm,momilp_3obj_1con_50int_50bin_KP_p-3_n-50_ins-10,383,0,383,0,762,115.17,0,113.74,0.01,383
+7,ConeBasedSearchAlgorithm,momilp_3obj_1con_50int_50bin_KP_p-3_n-50_ins-4,402,0,402,0,802,107.61,0,106.05,0.01,402
+8,ConeBasedSearchAlgorithm,momilp_3obj_1con_50int_50bin_KP_p-3_n-50_ins-1,507,0,507,0,1014,155.62,0,153.39,0.02,507
+9,ConeBasedSearchAlgorithm,momilp_3obj_1con_50int_50bin_KP_p-3_n-50_ins-5,557,0,557,0,1115,167.31,0,164.48,0.02,557
