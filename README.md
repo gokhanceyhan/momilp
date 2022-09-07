@@ -24,8 +24,8 @@ python ./src/apps/momilp_solver --help
 
 ## Instances
 ### TOMILP:
-Three-objective mixed-integer programming problem instances in the `.lp` file format. Subfolder names indicate the number of constraints and 
-the number of integer variables. Each instance has equal number of continuous and integer variables. For example, `O3-C10` instances contain 10 linear constraints with 5 continuous and 5 integer variables. 
+Three-objective mixed-integer programming problem instances in the `.lp` file format. Subfolder names indicate the number of constraints and the number of integer variables. Each instance has equal number of continuous and integer variables. 
+For example, in subfolder `10`, instances contain 10 linear constraints with 5 continuous and 5 integer variables. 
 - Instances under `I1` folder contain instances with `one` discrete-valued objective.
 - Instances under `B1` folder contain instances with `one` discrete-valued objective and all integer variables are binary.
 - Instances under `B2` folder contain instances with `two` discrete-valued objective and all integer variables are binary.
