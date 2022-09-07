@@ -141,7 +141,7 @@ class ConeBasedSearchAlgorithmTest(TestCase):
 
     def test_paper_ex_2_problem(self):
         """Tests the algorithm on Example 2 of the paper"""
-        model_file = os.path.join(self._test_data_dir, "paper_ex_2.lp")
+        model_file = os.path.join(self._test_data_dir, "paper_ex_1.lp")
         algorithm = AlgorithmFactory.create(
             model_file, self._logs_dir, algorithm_type=AlgorithmType.CONE_BASED_SEARCH, 
             explore_decision_space=True)
