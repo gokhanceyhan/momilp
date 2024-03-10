@@ -1,6 +1,11 @@
 # momilp
 Solver for a class of Multi-objective Mixed Integer Linear Programs (MOMILPs)
 
+This repository provides an implementation of the algorithm, Cone-Based Search Algorithm (CBSA), developed in our following paper: 
+```
+Gökhan Ceyhan, Murat Köksalan, Banu Lokman (2023) Finding the Nondominated Set and Efficient Integer Vectors for a Class of Three-Objective Mixed-Integer Linear Programs. Management Science 69(10):6001-6020.
+```
+
 ## Programming language
 This project is implemented in Python 3.
 
