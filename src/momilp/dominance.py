@@ -82,7 +82,7 @@ class DominanceModel:
         for i in range(num_objectives):
             model.setObjectiveN(z[i], i, priority=num_objectives - i)
         self._model = model
-        self._objective_variables = z.values()
+        self._objective_variables = list(z.values())
         model.setParam("LogToConsole", 0)
         model.setParam("LogFile", "")
         model.Params.FeasibilityTol = 1e-9
